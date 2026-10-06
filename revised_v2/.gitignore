@@ -1,0 +1,34 @@
+# Build output (binaries in the project root only; tests/ holds test sources)
+/server
+/client
+/tests_run
+*.exe
+*.o
+*.d
+*.a
+
+# Build directories
+build/
+cmake-build-*/
+
+# Output of tools/test_semantics.sh
+experiment_logs/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+.AppleDouble
+
+# Log files
+*.log
+/tmp/
+
+# Backup files
+*.bak
+*.orig
