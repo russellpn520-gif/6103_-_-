@@ -1,6 +1,6 @@
 /**
  * @file data_structures.h
- * @brief 数据结构定义
+ * @brief Core data structures shared by the client and the server.
  */
 
 #ifndef DATA_STRUCTURES_H
@@ -8,21 +8,26 @@
 
 #include <string>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <ctime>
 #include <vector>
-#include <sys/socket.h>
-#include <netinet/in.h>
+#include "common/platform.h"
 
 /**
- * @brief 时间结构（精确到分钟）
+ * @brief Departure time with minute precision (our own time representation).
+ *
+ * On the wire a Time is five consecutive 32-bit big-endian integers
+ * (year, month, day, hour, minute), i.e. WIRE_SIZE = 20 bytes.
  */
 struct Time {
-    int32_t year;        // 年
-    int32_t month;       // 月
-    int32_t day;         // 日
-    int32_t hour;        // 时
-    int32_t minute;      // 分
+    int32_t year;
+    int32_t month;    // 1-12
+    int32_t day;      // 1-31
+    int32_t hour;     // 0-23
+    int32_t minute;   // 0-59
+
+    static constexpr size_t WIRE_SIZE = 20;
 
     Time() : year(0), month(0), day(0), hour(0), minute(0) {}
 
@@ -30,7 +35,7 @@ struct Time {
         : year(y), month(m), day(d), hour(h), minute(min) {}
 
     /**
-     * @brief 转换为字符串
+     * @brief Format as "YYYY-MM-DD HH:MM".
      */
     std::string toString() const {
         char buffer[32];
@@ -40,26 +45,27 @@ struct Time {
     }
 
     /**
-     * @brief 序列化为字节流（20字节）
+     * @brief Write the 20-byte network representation into buffer
+     *        (buffer must have room for WIRE_SIZE bytes).
      */
     void serialize(uint8_t* buffer) const;
 
     /**
-     * @brief 从字节流反序列化
+     * @brief Read the 20-byte network representation from buffer.
      */
     void deserialize(const uint8_t* buffer);
 };
 
 /**
- * @brief 航班信息结构
+ * @brief One flight as stored at the server.
  */
 struct Flight {
-    int32_t flight_id;           // 航班号
-    std::string source;          // 出发地
-    std::string destination;     // 目的地
-    Time departure_time;         // 出发时间
-    float airfare;               // 票价
-    int32_t seat_availability;   // 可用座位数
+    int32_t flight_id;           // flight identifier
+    std::string source;          // departure place (variable length)
+    std::string destination;     // arrival place (variable length)
+    Time departure_time;         // departure time
+    float airfare;               // airfare (IEEE-754 single precision on the wire)
+    int32_t seat_availability;   // number of seats still available
 
     Flight() : flight_id(0), airfare(0.0f), seat_availability(0) {}
 
@@ -70,13 +76,13 @@ struct Flight {
 };
 
 /**
- * @brief 监控记录
+ * @brief A client registered for seat-availability callbacks on one flight.
  */
 struct MonitorEntry {
-    int32_t flight_id;                    // 监控的航班号
-    struct sockaddr_in client_addr;       // 客户端地址
-    time_t expire_time;                   // 到期时间（Unix时间戳）
-    bool active;                          // 是否有效
+    int32_t flight_id;                    // flight being monitored
+    struct sockaddr_in client_addr;       // where callbacks are sent (taken from the register request)
+    time_t expire_time;                   // end of the monitor interval (Unix time)
+    bool active;                          // false once the entry should no longer receive callbacks
 
     MonitorEntry() : flight_id(0), expire_time(0), active(false) {
         memset(&client_addr, 0, sizeof(client_addr));
@@ -84,12 +90,12 @@ struct MonitorEntry {
 };
 
 /**
- * @brief 历史记录条目（用于去重）
+ * @brief Reply history entry used for duplicate filtering (at-most-once).
  */
 struct HistoryEntry {
-    uint32_t request_id;                  // 请求ID
-    std::vector<uint8_t> response_data;   // 响应数据
-    time_t timestamp;                     // 时间戳
+    uint32_t request_id;                  // request id chosen by the client
+    std::vector<uint8_t> response_data;   // marshalled reply that was sent for this request
+    time_t timestamp;                     // when the request was executed (for expiry)
 
     HistoryEntry() : request_id(0), timestamp(0) {}
 };

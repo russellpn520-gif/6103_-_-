@@ -1,10 +1,21 @@
 /**
  * @file flight_manager.cpp
- * @brief 航班管理器实现
+ * @brief In-memory flight database.
  */
 
 #include "server/flight_manager.h"
+#include "common/message_types.h"
 #include "common/logger.h"
+
+namespace {
+
+void setError(int32_t* error, int32_t code) {
+    if (error != nullptr) {
+        *error = code;
+    }
+}
+
+} // namespace
 
 std::vector<int32_t> FlightManager::queryFlight(const std::string& source, const std::string& destination) {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -18,8 +29,6 @@ std::vector<int32_t> FlightManager::queryFlight(const std::string& source, const
         }
     }
 
-    LOG_INFO("Query flight: " + source + " -> " + destination + ", found " + std::to_string(result.size()) + " flights");
-
     return result;
 }
 
@@ -28,7 +37,6 @@ bool FlightManager::getFlightInfo(int32_t flight_id, Flight& flight) {
 
     auto it = flights_.find(flight_id);
     if (it == flights_.end()) {
-        LOG_WARNING("Flight not found: " + std::to_string(flight_id));
         return false;
     }
 
@@ -36,28 +44,32 @@ bool FlightManager::getFlightInfo(int32_t flight_id, Flight& flight) {
     return true;
 }
 
-bool FlightManager::reserveSeats(int32_t flight_id, int32_t seat_count, int32_t& remaining) {
+bool FlightManager::reserveSeats(int32_t flight_id, int32_t seat_count, int32_t& remaining, int32_t* error) {
     std::lock_guard<std::mutex> lock(mutex_);
 
     auto it = flights_.find(flight_id);
     if (it == flights_.end()) {
-        LOG_WARNING("Flight not found: " + std::to_string(flight_id));
+        remaining = 0;
+        setError(error, ERR_FLIGHT_NOT_FOUND);
         return false;
     }
 
     Flight& flight = it->second;
+    remaining = flight.seat_availability;
+
+    if (seat_count <= 0) {
+        setError(error, ERR_INVALID_SEAT_COUNT);
+        return false;
+    }
 
     if (flight.seat_availability < seat_count) {
-        LOG_WARNING("Insufficient seats for flight " + std::to_string(flight_id));
+        setError(error, ERR_INSUFFICIENT_SEATS);
         return false;
     }
 
     flight.seat_availability -= seat_count;
     remaining = flight.seat_availability;
-
-    LOG_INFO("Reserved " + std::to_string(seat_count) + " seats for flight " + std::to_string(flight_id) +
-             ", remaining: " + std::to_string(remaining));
-
+    setError(error, ERR_SUCCESS);
     return true;
 }
 
@@ -73,30 +85,52 @@ bool FlightManager::getSeatCount(int32_t flight_id, int32_t& count) {
     return true;
 }
 
-bool FlightManager::cancelReservation(int32_t flight_id, int32_t seat_count, int32_t& new_count) {
+bool FlightManager::cancelReservation(int32_t flight_id, int32_t seat_count, int32_t& new_count, int32_t* error) {
     std::lock_guard<std::mutex> lock(mutex_);
 
     auto it = flights_.find(flight_id);
     if (it == flights_.end()) {
+        new_count = 0;
+        setError(error, ERR_FLIGHT_NOT_FOUND);
         return false;
     }
 
     Flight& flight = it->second;
-    flight.seat_availability += seat_count;
     new_count = flight.seat_availability;
 
-    LOG_INFO("Cancelled " + std::to_string(seat_count) + " seats for flight " + std::to_string(flight_id));
+    if (seat_count <= 0) {
+        setError(error, ERR_INVALID_SEAT_COUNT);
+        return false;
+    }
 
+    // Seats can only be given back if they were reserved before; without this
+    // check a cancellation could push the availability above the capacity.
+    int32_t reserved = capacity_[flight_id] - flight.seat_availability;
+    if (seat_count > reserved) {
+        setError(error, ERR_CANCEL_EXCEEDS_RESERVED);
+        return false;
+    }
+
+    flight.seat_availability += seat_count;
+    new_count = flight.seat_availability;
+    setError(error, ERR_SUCCESS);
     return true;
 }
 
 void FlightManager::addFlight(const Flight& flight) {
     std::lock_guard<std::mutex> lock(mutex_);
     flights_[flight.flight_id] = flight;
-    LOG_INFO("Added flight: " + std::to_string(flight.flight_id));
+    capacity_[flight.flight_id] = flight.seat_availability;
+
+    char fare[32];
+    snprintf(fare, sizeof(fare), "%.2f", flight.airfare);
+    LOG_INFO("  Flight " + std::to_string(flight.flight_id) + ": " + flight.source + " -> " + flight.destination +
+             ", departs " + flight.departure_time.toString() + ", airfare " + fare +
+             ", " + std::to_string(flight.seat_availability) + " seats");
 }
 
 void FlightManager::initTestData() {
+    LOG_INFO("Loading test flights:");
     addFlight(Flight(1001, "Beijing", "Shanghai", Time(2026, 10, 20, 8, 30), 800.50f, 120));
     addFlight(Flight(1002, "Beijing", "Shanghai", Time(2026, 10, 20, 10, 0), 850.00f, 100));
     addFlight(Flight(1003, "Beijing", "Shanghai", Time(2026, 10, 20, 14, 30), 900.00f, 80));

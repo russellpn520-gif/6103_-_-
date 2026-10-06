@@ -1,24 +1,22 @@
 cmake_minimum_required(VERSION 3.10)
-project(FlightSystem VERSION 1.0 LANGUAGES CXX)
+project(FlightSystem VERSION 1.1 LANGUAGES CXX)
 
-# C++11 标准
-set(CMAKE_CXX_STANDARD 11)
+# Same language standard as the Makefile
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# 编译选项
-if(APPLE)
-    # macOS 特定选项
-    add_compile_options(-Wall -Wextra -g)
+if(MSVC)
+    add_compile_options(/W4)
+    add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
 else()
     add_compile_options(-Wall -Wextra -g)
 endif()
 
-# 包含目录
 include_directories(${CMAKE_SOURCE_DIR}/include)
 
 # ============================================================
-# 公共库
+# Common library
 # ============================================================
 add_library(common STATIC
     src/common/message_serializer.cpp
@@ -26,12 +24,12 @@ add_library(common STATIC
     src/common/logger.cpp
 )
 
-target_include_directories(common PUBLIC
-    ${CMAKE_SOURCE_DIR}/include/common
-)
+if(WIN32)
+    target_link_libraries(common PUBLIC ws2_32)
+endif()
 
 # ============================================================
-# 客户端
+# Client
 # ============================================================
 add_executable(client
     src/client/flight_client.cpp
@@ -42,7 +40,7 @@ add_executable(client
 target_link_libraries(client common)
 
 # ============================================================
-# 服务器
+# Server
 # ============================================================
 add_executable(server
     src/server/flight_server.cpp
@@ -55,12 +53,11 @@ add_executable(server
 target_link_libraries(server common)
 
 # ============================================================
-# 测试（可选，如果有 Google Test）
+# Unit tests (optional: needs Google Test and the tests/ sources)
 # ============================================================
 option(BUILD_TESTS "Build test executables" ON)
 
-if(BUILD_TESTS)
-    # 尝试查找 Google Test
+if(BUILD_TESTS AND EXISTS ${CMAKE_SOURCE_DIR}/tests/test_main.cpp)
     find_package(GTest QUIET)
 
     if(GTEST_FOUND)
@@ -70,6 +67,9 @@ if(BUILD_TESTS)
             tests/test_main.cpp
             tests/test_message_serializer.cpp
             tests/test_flight_manager.cpp
+            src/server/flight_manager.cpp
+            src/server/monitor_manager.cpp
+            src/server/request_history.cpp
         )
 
         target_link_libraries(tests
@@ -88,15 +88,7 @@ if(BUILD_TESTS)
 endif()
 
 # ============================================================
-# 安装
+# Install
 # ============================================================
 install(TARGETS client server DESTINATION bin)
 install(DIRECTORY include/ DESTINATION include)
-
-# ============================================================
-# 清理目标
-# ============================================================
-add_custom_target(clean-all
-    COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_BINARY_DIR}/*
-    COMMENT "Cleaning all build files"
-)

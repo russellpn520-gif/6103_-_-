@@ -10,7 +10,7 @@ echo "=========================================="
 echo ""
 
 # 检查是否已编译
-if [ ! -f "./tests" ]; then
+if [ ! -f "./tests_run" ]; then
     echo "❌ 测试程序未找到"
     echo ""
     echo "请按以下步骤操作："
@@ -36,7 +36,7 @@ echo "开始运行测试..."
 echo ""
 
 # 运行测试
-./tests
+./tests_run
 
 # 显示测试结果
 EXIT_CODE=$?

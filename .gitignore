@@ -1,15 +1,20 @@
-# 编译产物（仅根目录的二进制文件）
+# Build output (binaries in the project root only; tests/ holds test sources)
 /server
 /client
-/tests
+/tests_run
+*.exe
 *.o
+*.d
 *.a
 
-# 构建目录
+# Build directories
 build/
 cmake-build-*/
 
-# IDE 文件
+# Output of tools/test_semantics.sh
+experiment_logs/
+
+# IDE files
 .vscode/
 .idea/
 *.swp
@@ -20,10 +25,10 @@ cmake-build-*/
 .DS_Store
 .AppleDouble
 
-# 日志文件
+# Log files
 *.log
 /tmp/
 
-# 备份文件
+# Backup files
 *.bak
 *.orig

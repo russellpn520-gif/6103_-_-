@@ -1,15 +1,29 @@
-# 分布式航班信息系统 Makefile
+# Distributed Flight Information System - Makefile
+#
+#   make          build server and client
+#   make test     build and run the unit tests (needs Google Test)
+#   make clean    remove build output
+#
+# Works on macOS/Linux and on Windows with MinGW-w64 (e.g. MSYS2: mingw32-make).
 
 CXX = g++
 CXXFLAGS = -std=c++17 -Wall -Wextra -g -I include -I/opt/homebrew/include
 LDFLAGS = -L/opt/homebrew/lib
 
-# 目标文件
-SERVER_BIN = server
-CLIENT_BIN = client
-TEST_BIN = tests_run
+ifeq ($(OS),Windows_NT)
+    EXE = .exe
+    LDLIBS = -lws2_32
+else
+    EXE =
+    LDLIBS =
+endif
 
-# 源文件
+# Binaries
+SERVER_BIN = server$(EXE)
+CLIENT_BIN = client$(EXE)
+TEST_BIN = tests_run$(EXE)
+
+# Sources
 COMMON_SRCS = src/common/message_serializer.cpp \
               src/common/udp_socket.cpp \
               src/common/logger.cpp
@@ -28,126 +42,79 @@ TEST_SRCS = tests/test_main.cpp \
             tests/test_message_serializer.cpp \
             tests/test_flight_manager.cpp
 
-# 测试需要的服务器源文件（不包括 server_main.cpp）
+# Server sources needed by the tests (everything except server_main.cpp)
 TEST_SERVER_SRCS = src/server/flight_manager.cpp \
                    src/server/monitor_manager.cpp \
                    src/server/request_history.cpp
 
-# 对象文件
+# Objects
 COMMON_OBJS = $(COMMON_SRCS:.cpp=.o)
 SERVER_OBJS = $(SERVER_SRCS:.cpp=.o)
 CLIENT_OBJS = $(CLIENT_SRCS:.cpp=.o)
 TEST_OBJS = $(TEST_SRCS:.cpp=.o)
 TEST_SERVER_OBJS = $(TEST_SERVER_SRCS:.cpp=.o)
+ALL_OBJS = $(sort $(COMMON_OBJS) $(SERVER_OBJS) $(CLIENT_OBJS) $(TEST_OBJS))
 
-# 默认目标
+# Default target
 all: $(SERVER_BIN) $(CLIENT_BIN)
 
-# 服务器
 $(SERVER_BIN): $(COMMON_OBJS) $(SERVER_OBJS)
-	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS) $(LDLIBS)
 	@echo "Built: $(SERVER_BIN)"
 
-# 客户端
 $(CLIENT_BIN): $(COMMON_OBJS) $(CLIENT_OBJS)
-	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS) $(LDLIBS)
 	@echo "Built: $(CLIENT_BIN)"
 
-# 检查 Google Test 是否可用
-check-gtest:
-	@echo "Checking for Google Test..."
-	@echo '#include <gtest/gtest.h>' > /tmp/gtest_check.cpp
-	@echo 'int main() { return 0; }' >> /tmp/gtest_check.cpp
-	@if ! g++ -std=c++17 -I/opt/homebrew/include /tmp/gtest_check.cpp -o /tmp/gtest_check 2>/dev/null; then \
-		echo ""; \
-		echo "❌ 错误: Google Test 未安装"; \
-		echo ""; \
-		echo "请按以下步骤安装 Google Test:"; \
-		echo ""; \
-		echo "方法 1: 使用 Homebrew (推荐)"; \
-		echo "  brew install googletest"; \
-		echo ""; \
-		echo "方法 2: 手动安装"; \
-		echo "  1. 下载: https://github.com/google/googletest"; \
-		echo "  2. 编译安装:"; \
-		echo "     cd googletest"; \
-		echo "     mkdir build && cd build"; \
-		echo "     cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local"; \
-		echo "     make"; \
-		echo "     sudo make install"; \
-		echo ""; \
-		echo "方法 3: 跳过单元测试"; \
-		echo "  如果不需要单元测试，可以只运行功能测试:"; \
-		echo "  ./tools/test_semantics.sh"; \
-		echo ""; \
-		rm -f /tmp/gtest_check.cpp /tmp/gtest_check; \
-		exit 1; \
-	fi
-	@rm -f /tmp/gtest_check.cpp /tmp/gtest_check
-	@echo "✅ Google Test found"
+# On Windows also allow "make server" / "make client"
+ifneq ($(EXE),)
+server: $(SERVER_BIN)
+client: $(CLIENT_BIN)
+.PHONY: server client
+endif
 
-# 测试（需要 Google Test）
-$(TEST_BIN): $(COMMON_OBJS) $(TEST_SERVER_OBJS) $(TEST_OBJS)
-	@echo "Checking for Google Test..."
-	@echo '#include <gtest/gtest.h>' > /tmp/gtest_check.cpp
-	@echo 'int main() { return 0; }' >> /tmp/gtest_check.cpp
-	@if ! g++ -std=c++17 -I/opt/homebrew/include /tmp/gtest_check.cpp -o /tmp/gtest_check 2>/dev/null; then \
+# Check that Google Test can be found
+check-gtest:
+	@echo '#include <gtest/gtest.h>' > gtest_check.cpp
+	@echo 'int main() { return 0; }' >> gtest_check.cpp
+	@if ! $(CXX) $(CXXFLAGS) gtest_check.cpp -o gtest_check$(EXE) 2>/dev/null; then \
+		rm -f gtest_check.cpp gtest_check$(EXE); \
 		echo ""; \
-		echo "❌ 错误: Google Test 未安装"; \
+		echo "Error: Google Test is not installed."; \
+		echo "  macOS:  brew install googletest   (or ./tools/install_gtest.sh)"; \
+		echo "  Ubuntu: sudo apt-get install libgtest-dev"; \
+		echo "The semantics experiment does not need it: ./tools/test_semantics.sh"; \
 		echo ""; \
-		echo "请按以下步骤安装 Google Test:"; \
-		echo ""; \
-		echo "方法 1: 使用 Homebrew (推荐)"; \
-		echo "  brew install googletest"; \
-		echo ""; \
-		echo "方法 2: 手动安装"; \
-		echo "  1. 下载: https://github.com/google/googletest"; \
-		echo "  2. 编译安装:"; \
-		echo "     cd googletest"; \
-		echo "     mkdir build && cd build"; \
-		echo "     cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local"; \
-		echo "     make"; \
-		echo "     sudo make install"; \
-		echo ""; \
-		echo "方法 3: 跳过单元测试"; \
-		echo "  如果不需要单元测试，可以只运行功能测试:"; \
-		echo "  ./tools/test_semantics.sh"; \
-		echo ""; \
-		rm -f /tmp/gtest_check.cpp /tmp/gtest_check; \
 		exit 1; \
 	fi
-	@rm -f /tmp/gtest_check.cpp /tmp/gtest_check
-	@echo "✅ Google Test found"
-	$(CXX) $(CXXFLAGS) -o $@ $(COMMON_OBJS) $(TEST_SERVER_OBJS) $(TEST_OBJS) $(LDFLAGS) -lgtest -lgtest_main -pthread
+	@rm -f gtest_check.cpp gtest_check$(EXE)
+	@echo "Google Test found"
+
+# Unit tests (need Google Test)
+$(TEST_BIN): check-gtest $(COMMON_OBJS) $(TEST_SERVER_OBJS) $(TEST_OBJS)
+	$(CXX) $(CXXFLAGS) -o $@ $(COMMON_OBJS) $(TEST_SERVER_OBJS) $(TEST_OBJS) $(LDFLAGS) -lgtest -lgtest_main -pthread $(LDLIBS)
 	@echo "Built: $(TEST_BIN)"
 
-# 编译规则
+# Compile; -MMD -MP also records header dependencies so that changing a
+# header rebuilds every file that includes it.
 %.o: %.cpp
-	$(CXX) $(CXXFLAGS) -c $< -o $@
+	$(CXX) $(CXXFLAGS) -MMD -MP -c $< -o $@
 
-# 清理
+-include $(ALL_OBJS:.o=.d)
+
 clean:
-	rm -f $(COMMON_OBJS) $(SERVER_OBJS) $(CLIENT_OBJS) $(TEST_OBJS) $(TEST_SERVER_OBJS)
-	rm -f $(SERVER_BIN) $(CLIENT_BIN)
-	rm -f $(TEST_BIN)
+	rm -f $(ALL_OBJS) $(ALL_OBJS:.o=.d)
+	rm -f $(SERVER_BIN) $(CLIENT_BIN) $(TEST_BIN)
 	@echo "Cleaned"
 
-# 运行测试
 test: $(TEST_BIN)
 	./$(TEST_BIN)
 
-# 帮助
 help:
 	@echo "Targets:"
 	@echo "  all     - Build server and client"
-	@echo "  server  - Build server"
-	@echo "  client  - Build client"
-	@echo "  test    - Build and run tests (requires Google Test)"
+	@echo "  test    - Build and run the unit tests (requires Google Test)"
 	@echo "  clean   - Remove build files"
 	@echo "  help    - Show this help"
-	@echo ""
-	@echo "注意: 运行测试需要先安装 Google Test"
-	@echo "  macOS: brew install googletest"
-	@echo "  详见 README.md"
 
 .PHONY: all clean test help check-gtest

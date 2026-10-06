@@ -1,6 +1,40 @@
 /**
  * @file message_serializer.h
- * @brief 消息编组/解组
+ * @brief Marshalling and unmarshalling of request/reply messages.
+ *
+ * All messages are plain byte arrays built by hand (no RMI/RPC/object
+ * serialisation library is used).
+ *
+ * Field encodings (every integer is 32 bits in network byte order, htonl/ntohl):
+ *   int32 / uint32   4 bytes
+ *   float            IEEE-754 single-precision bit pattern, sent as a uint32
+ *   string           uint32 length, followed by `length` raw bytes (no '\0')
+ *   Time             5 x int32: year, month, day, hour, minute (20 bytes)
+ *
+ * Header (12 bytes, every message):
+ *   uint32 message_type | uint32 request_id | uint32 message_length
+ *   message_length is the total datagram size, header included.
+ *
+ * Bodies:
+ *   QUERY_FLIGHT_REQUEST         string source, string destination
+ *   QUERY_FLIGHT_RESPONSE        int32 status [, uint32 count, count x int32 flight_id]
+ *   GET_FLIGHT_INFO_REQUEST      int32 flight_id
+ *   GET_FLIGHT_INFO_RESPONSE     int32 status [, int32 flight_id, string source, string destination,
+ *                                              Time departure, float airfare, int32 seats]
+ *   RESERVE_SEATS_REQUEST        int32 flight_id, int32 seat_count
+ *   RESERVE_SEATS_RESPONSE       int32 status, int32 remaining_seats
+ *   REGISTER_MONITOR_REQUEST     int32 flight_id, int32 interval_seconds
+ *   REGISTER_MONITOR_RESPONSE    int32 status
+ *   CALLBACK_UPDATE              int32 flight_id, int32 seat_availability, int32 remaining_seconds
+ *                                (request_id is 0: a callback answers no request)
+ *   GET_SEAT_COUNT_REQUEST       int32 flight_id
+ *   GET_SEAT_COUNT_RESPONSE      int32 status, int32 seat_count
+ *   CANCEL_RESERVATION_REQUEST   int32 flight_id, int32 seat_count
+ *   CANCEL_RESERVATION_RESPONSE  int32 status, int32 seat_availability
+ * The bracketed parts are present only when status == ERR_SUCCESS.
+ *
+ * Every unmarshal function checks the message type and that message_length
+ * equals the datagram size, and throws std::runtime_error on malformed input.
  */
 
 #ifndef MESSAGE_SERIALIZER_H
@@ -13,16 +47,16 @@
 #include "common/message_types.h"
 
 /**
- * @brief 消息序列化器
+ * @brief Static functions that convert messages to and from byte arrays.
  */
 class MessageSerializer {
 public:
     // ============================================================
-    // 辅助方法
+    // Primitive types
     // ============================================================
 
     /**
-     * @brief 写入消息头
+     * @brief Append a header (type, request id, length).
      */
     static void writeHeader(std::vector<uint8_t>& buffer,
                            uint32_t message_type,
@@ -30,7 +64,7 @@ public:
                            uint32_t message_length);
 
     /**
-     * @brief 读取消息头
+     * @brief Read the header fields at the start of buffer (no validation).
      */
     static void readHeader(const std::vector<uint8_t>& buffer,
                           uint32_t& message_type,
@@ -38,42 +72,39 @@ public:
                           uint32_t& message_length);
 
     /**
-     * @brief 写入32位整数（大端序）
+     * @brief Append a 32-bit unsigned integer in network byte order.
      */
     static void writeUint32(std::vector<uint8_t>& buffer, uint32_t value);
 
     /**
-     * @brief 读取32位整数（大端序）
+     * @brief Read a 32-bit unsigned integer at offset and advance offset.
      */
     static uint32_t readUint32(const std::vector<uint8_t>& buffer, size_t& offset);
 
     /**
-     * @brief 写入字符串（长度前缀）
+     * @brief Append a length-prefixed string.
      */
     static void writeString(std::vector<uint8_t>& buffer, const std::string& str);
 
     /**
-     * @brief 读取字符串（长度前缀）
+     * @brief Read a length-prefixed string at offset and advance offset.
      */
     static std::string readString(const std::vector<uint8_t>& buffer, size_t& offset);
 
     /**
-     * @brief 写入浮点数
+     * @brief Append a float as its IEEE-754 bit pattern in network byte order.
      */
     static void writeFloat(std::vector<uint8_t>& buffer, float value);
 
     /**
-     * @brief 读取浮点数
+     * @brief Read a float written by writeFloat() and advance offset.
      */
     static float readFloat(const std::vector<uint8_t>& buffer, size_t& offset);
 
     // ============================================================
-    // 服务1：查询航班
+    // Service 1: query flights by source and destination
     // ============================================================
 
-    /**
-     * @brief 编组查询航班请求
-     */
     static void marshalQueryFlightRequest(
         uint32_t request_id,
         const std::string& source,
@@ -81,9 +112,6 @@ public:
         std::vector<uint8_t>& buffer
     );
 
-    /**
-     * @brief 解组查询航班请求
-     */
     static void unmarshalQueryFlightRequest(
         const std::vector<uint8_t>& buffer,
         uint32_t& request_id,
@@ -91,9 +119,6 @@ public:
         std::string& destination
     );
 
-    /**
-     * @brief 编组查询航班响应
-     */
     static void marshalQueryFlightResponse(
         uint32_t request_id,
         int32_t status_code,
@@ -101,9 +126,6 @@ public:
         std::vector<uint8_t>& buffer
     );
 
-    /**
-     * @brief 解组查询航班响应
-     */
     static void unmarshalQueryFlightResponse(
         const std::vector<uint8_t>& buffer,
         uint32_t& request_id,
@@ -112,30 +134,21 @@ public:
     );
 
     // ============================================================
-    // 服务2：查询航班详情
+    // Service 2: query flight details
     // ============================================================
 
-    /**
-     * @brief 编组查询航班详情请求
-     */
     static void marshalGetFlightInfoRequest(
         uint32_t request_id,
         int32_t flight_id,
         std::vector<uint8_t>& buffer
     );
 
-    /**
-     * @brief 解组查询航班详情请求
-     */
     static void unmarshalGetFlightInfoRequest(
         const std::vector<uint8_t>& buffer,
         uint32_t& request_id,
         int32_t& flight_id
     );
 
-    /**
-     * @brief 编组查询航班详情响应
-     */
     static void marshalGetFlightInfoResponse(
         uint32_t request_id,
         int32_t status_code,
@@ -143,9 +156,6 @@ public:
         std::vector<uint8_t>& buffer
     );
 
-    /**
-     * @brief 解组查询航班详情响应
-     */
     static void unmarshalGetFlightInfoResponse(
         const std::vector<uint8_t>& buffer,
         uint32_t& request_id,
@@ -154,12 +164,9 @@ public:
     );
 
     // ============================================================
-    // 服务3：预订座位
+    // Service 3: reserve seats
     // ============================================================
 
-    /**
-     * @brief 编组预订座位请求
-     */
     static void marshalReserveSeatsRequest(
         uint32_t request_id,
         int32_t flight_id,
@@ -167,9 +174,6 @@ public:
         std::vector<uint8_t>& buffer
     );
 
-    /**
-     * @brief 解组预订座位请求
-     */
     static void unmarshalReserveSeatsRequest(
         const std::vector<uint8_t>& buffer,
         uint32_t& request_id,
@@ -177,9 +181,6 @@ public:
         int32_t& seat_count
     );
 
-    /**
-     * @brief 编组预订座位响应
-     */
     static void marshalReserveSeatsResponse(
         uint32_t request_id,
         int32_t status_code,
@@ -187,9 +188,6 @@ public:
         std::vector<uint8_t>& buffer
     );
 
-    /**
-     * @brief 解组预订座位响应
-     */
     static void unmarshalReserveSeatsResponse(
         const std::vector<uint8_t>& buffer,
         uint32_t& request_id,
@@ -198,12 +196,9 @@ public:
     );
 
     // ============================================================
-    // 服务4：注册监控
+    // Service 4: monitor seat availability (callback)
     // ============================================================
 
-    /**
-     * @brief 编组注册监控请求
-     */
     static void marshalRegisterMonitorRequest(
         uint32_t request_id,
         int32_t flight_id,
@@ -211,9 +206,6 @@ public:
         std::vector<uint8_t>& buffer
     );
 
-    /**
-     * @brief 解组注册监控请求
-     */
     static void unmarshalRegisterMonitorRequest(
         const std::vector<uint8_t>& buffer,
         uint32_t& request_id,
@@ -221,27 +213,18 @@ public:
         int32_t& interval_seconds
     );
 
-    /**
-     * @brief 编组注册监控响应
-     */
     static void marshalRegisterMonitorResponse(
         uint32_t request_id,
         int32_t status_code,
         std::vector<uint8_t>& buffer
     );
 
-    /**
-     * @brief 解组注册监控响应
-     */
     static void unmarshalRegisterMonitorResponse(
         const std::vector<uint8_t>& buffer,
         uint32_t& request_id,
         int32_t& status_code
     );
 
-    /**
-     * @brief 编组回调更新消息
-     */
     static void marshalCallbackUpdate(
         int32_t flight_id,
         int32_t new_seat_count,
@@ -249,9 +232,6 @@ public:
         std::vector<uint8_t>& buffer
     );
 
-    /**
-     * @brief 解组回调更新消息
-     */
     static void unmarshalCallbackUpdate(
         const std::vector<uint8_t>& buffer,
         int32_t& flight_id,
@@ -260,30 +240,21 @@ public:
     );
 
     // ============================================================
-    // 服务5：查询座位数
+    // Service 5: query seat count (idempotent)
     // ============================================================
 
-    /**
-     * @brief 编组查询座位数请求
-     */
     static void marshalGetSeatCountRequest(
         uint32_t request_id,
         int32_t flight_id,
         std::vector<uint8_t>& buffer
     );
 
-    /**
-     * @brief 解组查询座位数请求
-     */
     static void unmarshalGetSeatCountRequest(
         const std::vector<uint8_t>& buffer,
         uint32_t& request_id,
         int32_t& flight_id
     );
 
-    /**
-     * @brief 编组查询座位数响应
-     */
     static void marshalGetSeatCountResponse(
         uint32_t request_id,
         int32_t status_code,
@@ -291,9 +262,6 @@ public:
         std::vector<uint8_t>& buffer
     );
 
-    /**
-     * @brief 解组查询座位数响应
-     */
     static void unmarshalGetSeatCountResponse(
         const std::vector<uint8_t>& buffer,
         uint32_t& request_id,
@@ -302,12 +270,9 @@ public:
     );
 
     // ============================================================
-    // 服务6：取消预订
+    // Service 6: cancel reservation (non-idempotent)
     // ============================================================
 
-    /**
-     * @brief 编组取消预订请求
-     */
     static void marshalCancelReservationRequest(
         uint32_t request_id,
         int32_t flight_id,
@@ -315,9 +280,6 @@ public:
         std::vector<uint8_t>& buffer
     );
 
-    /**
-     * @brief 解组取消预订请求
-     */
     static void unmarshalCancelReservationRequest(
         const std::vector<uint8_t>& buffer,
         uint32_t& request_id,
@@ -325,9 +287,6 @@ public:
         int32_t& seat_count
     );
 
-    /**
-     * @brief 编组取消预订响应
-     */
     static void marshalCancelReservationResponse(
         uint32_t request_id,
         int32_t status_code,
@@ -335,9 +294,6 @@ public:
         std::vector<uint8_t>& buffer
     );
 
-    /**
-     * @brief 解组取消预订响应
-     */
     static void unmarshalCancelReservationResponse(
         const std::vector<uint8_t>& buffer,
         uint32_t& request_id,

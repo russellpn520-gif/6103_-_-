@@ -1,6 +1,9 @@
 /**
  * @file logger.h
- * @brief 日志系统
+ * @brief Minimal thread-safe logger (header-only).
+ *
+ * Each line is written as "[YYYY-MM-DD HH:MM:SS] [LEVEL] message" to stdout
+ * and, if enabled with --log-file=<file>, appended to a log file as well.
  */
 
 #ifndef LOGGER_H
@@ -14,7 +17,7 @@
 #include <mutex>
 
 /**
- * @brief 日志级别
+ * @brief Log levels in increasing order of severity.
  */
 enum LogLevel {
     LOG_DEBUG = 0,
@@ -24,12 +27,12 @@ enum LogLevel {
 };
 
 /**
- * @brief 日志类
+ * @brief Process-wide logger (singleton).
  */
 class Logger {
 public:
     /**
-     * @brief 获取单例实例
+     * @brief Access the single logger instance.
      */
     static Logger& getInstance() {
         static Logger instance;
@@ -37,14 +40,14 @@ public:
     }
 
     /**
-     * @brief 设置日志级别
+     * @brief Suppress messages below this level (default: LOG_INFO).
      */
     void setLevel(LogLevel level) {
         level_ = level;
     }
 
     /**
-     * @brief 设置是否输出到文件
+     * @brief Additionally append every log line to the given file.
      */
     void enableFileOutput(const std::string& filename) {
         file_output_ = true;
@@ -52,7 +55,7 @@ public:
     }
 
     /**
-     * @brief 禁用文件输出
+     * @brief Stop writing to the log file.
      */
     void disableFileOutput() {
         file_output_ = false;
@@ -61,30 +64,18 @@ public:
         }
     }
 
-    /**
-     * @brief 输出调试日志
-     */
     void debug(const std::string& message) {
         log(LOG_DEBUG, "DEBUG", message);
     }
 
-    /**
-     * @brief 输出信息日志
-     */
     void info(const std::string& message) {
         log(LOG_INFO, "INFO", message);
     }
 
-    /**
-     * @brief 输出警告日志
-     */
     void warning(const std::string& message) {
         log(LOG_WARNING, "WARN", message);
     }
 
-    /**
-     * @brief 输出错误日志
-     */
     void error(const std::string& message) {
         log(LOG_ERROR, "ERROR", message);
     }
@@ -101,7 +92,7 @@ private:
     Logger& operator=(const Logger&) = delete;
 
     /**
-     * @brief 输出日志
+     * @brief Prefix the message with a timestamp and level and write it out.
      */
     void log(LogLevel level, const std::string& level_str, const std::string& message) {
         if (level < level_) {
@@ -110,20 +101,16 @@ private:
 
         std::lock_guard<std::mutex> lock(mutex_);
 
-        // 获取时间戳
         time_t now = time(nullptr);
         char time_str[32];
         strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", localtime(&now));
 
-        // 格式化日志消息
         std::stringstream ss;
         ss << "[" << time_str << "] [" << level_str << "] " << message;
         std::string log_message = ss.str();
 
-        // 输出到控制台
         std::cout << log_message << std::endl;
 
-        // 输出到文件
         if (file_output_ && log_file_.is_open()) {
             log_file_ << log_message << std::endl;
         }
@@ -135,7 +122,7 @@ private:
     std::mutex mutex_;
 };
 
-// 便捷宏
+// Convenience macros
 #define LOG_DEBUG(msg) Logger::getInstance().debug(msg)
 #define LOG_INFO(msg) Logger::getInstance().info(msg)
 #define LOG_WARNING(msg) Logger::getInstance().warning(msg)

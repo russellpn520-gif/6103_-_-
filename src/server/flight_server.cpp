@@ -1,55 +1,91 @@
 /**
  * @file flight_server.cpp
- * @brief 航班服务器实现
+ * @brief UDP request loop, duplicate handling (invocation semantics) and the
+ *        six services.
  */
 
 #include "server/flight_server.h"
 #include "common/message_serializer.h"
 #include "common/logger.h"
-#include <cstdlib>
+#include <cstdio>
 #include <ctime>
+#include <stdexcept>
+
+namespace {
+
+void logRequest(uint32_t request_id, const std::string& client, const std::string& text) {
+    LOG_INFO("Request #" + std::to_string(request_id) + " from " + client + ": " + text);
+}
+
+void logReply(uint32_t request_id, const std::string& client, int32_t status, const std::string& details = "") {
+    std::string text = "Reply   #" + std::to_string(request_id) + " to   " + client + ": " + getErrorMessage(status);
+    if (!details.empty()) {
+        text += ", " + details;
+    }
+    LOG_INFO(text);
+}
+
+std::string joinIds(const std::vector<int32_t>& ids) {
+    std::string text;
+    for (size_t i = 0; i < ids.size(); i++) {
+        if (i > 0) {
+            text += ", ";
+        }
+        text += std::to_string(ids[i]);
+    }
+    return text;
+}
+
+std::string formatFare(float fare) {
+    char buffer[32];
+    snprintf(buffer, sizeof(buffer), "%.2f", fare);
+    return buffer;
+}
+
+} // namespace
 
 FlightServer::FlightServer(uint16_t port)
-    : port_(port), running_(false), at_least_once_(false), loss_rate_(0.0) {
-    srand(static_cast<unsigned>(time(nullptr)));
+    : port_(port), running_(false), semantics_(Semantics::AT_MOST_ONCE), loss_rate_(0.0),
+      rng_(static_cast<uint32_t>(time(nullptr))) {
 }
 
 FlightServer::~FlightServer() {
     stop();
 }
 
-void FlightServer::start() {
+bool FlightServer::start() {
     if (!socket_.bind(port_)) {
-        LOG_ERROR("Failed to bind to port " + std::to_string(port_));
-        return;
+        return false;
     }
 
     running_ = true;
-    LOG_INFO("Server started on port " + std::to_string(port_));
+    LOG_INFO("Server listening on UDP port " + std::to_string(port_));
 
     flight_manager_.initTestData();
 
     requestLoop();
+    return true;
 }
 
 void FlightServer::stop() {
     running_ = false;
     socket_.close();
-    LOG_INFO("Server stopped");
 }
 
 void FlightServer::addFlight(const Flight& flight) {
     flight_manager_.addFlight(flight);
 }
 
-void FlightServer::setAtLeastOnce(bool enable) {
-    at_least_once_ = enable;
-    LOG_INFO("At-least-once semantic: " + std::string(enable ? "enabled" : "disabled"));
+void FlightServer::setSemantics(Semantics semantics) {
+    semantics_ = semantics;
 }
 
 void FlightServer::setLossRate(double rate) {
     loss_rate_ = rate;
-    LOG_INFO("Loss rate set to " + std::to_string(rate));
+}
+
+void FlightServer::setSeed(uint32_t seed) {
+    rng_.seed(seed);
 }
 
 void FlightServer::requestLoop() {
@@ -57,167 +93,217 @@ void FlightServer::requestLoop() {
     struct sockaddr_in client_addr;
 
     while (running_) {
-        ssize_t received = socket_.recvFrom(buffer, sizeof(buffer), client_addr);
+        // Wake up at least once per second so expired monitors are removed on
+        // time even when no requests arrive.
+        ssize_t received = socket_.recvFrom(buffer, sizeof(buffer), client_addr, 1000);
 
         if (received > 0) {
             std::vector<uint8_t> request(buffer, buffer + received);
             handleRequest(request, client_addr);
         }
 
-        // 定期清理过期的监控和历史记录
         monitor_manager_.cleanupExpired();
         history_.cleanup();
     }
 }
 
-void FlightServer::handleRequest(const std::vector<uint8_t>& request, struct sockaddr_in& client_addr) {
+void FlightServer::handleRequest(const std::vector<uint8_t>& request, const struct sockaddr_in& client_addr) {
+    const std::string client = UdpSocket::addressToString(client_addr);
+
     if (request.size() < MessageHeader::SIZE) {
-        LOG_ERROR("Request too short");
+        LOG_WARNING("Dropped " + std::to_string(request.size()) + "-byte datagram from " + client +
+                    ": shorter than a message header");
         return;
     }
 
-    // 读取消息类型和请求ID
     uint32_t message_type, request_id, message_length;
     MessageSerializer::readHeader(request, message_type, request_id, message_length);
 
-    LOG_INFO("Received request type=" + std::to_string(message_type) +
-             " id=" + std::to_string(request_id));
-
-    // 检查是否是重复请求
-    if (at_least_once_) {
-        std::vector<uint8_t> cached_response;
-        if (history_.findEntry(request_id, cached_response)) {
-            LOG_INFO("Duplicate request, returning cached response");
-            sendResponse(cached_response, client_addr);
-            return;
-        }
-    }
-
-    // 处理请求
-    std::vector<uint8_t> response;
-
-    switch (message_type) {
-        case MSG_QUERY_FLIGHT_REQUEST: {
-            uint32_t req_id;
-            std::string source, destination;
-            MessageSerializer::unmarshalQueryFlightRequest(request, req_id, source, destination);
-
-            std::vector<int32_t> flight_ids = flight_manager_.queryFlight(source, destination);
-
-            int32_t status = flight_ids.empty() ? ERR_NO_FLIGHTS_FOUND : ERR_SUCCESS;
-            MessageSerializer::marshalQueryFlightResponse(req_id, status, flight_ids, response);
-            break;
-        }
-
-        case MSG_GET_FLIGHT_INFO_REQUEST: {
-            uint32_t req_id;
-            int32_t flight_id;
-            MessageSerializer::unmarshalGetFlightInfoRequest(request, req_id, flight_id);
-
-            Flight flight;
-            bool found = flight_manager_.getFlightInfo(flight_id, flight);
-
-            int32_t status = found ? ERR_SUCCESS : ERR_FLIGHT_NOT_FOUND;
-            MessageSerializer::marshalGetFlightInfoResponse(req_id, status, flight, response);
-            break;
-        }
-
-        case MSG_RESERVE_SEATS_REQUEST: {
-            uint32_t req_id;
-            int32_t flight_id, seat_count;
-            MessageSerializer::unmarshalReserveSeatsRequest(request, req_id, flight_id, seat_count);
-
-            int32_t remaining;
-            bool success = flight_manager_.reserveSeats(flight_id, seat_count, remaining);
-
-            int32_t status = success ? ERR_SUCCESS : ERR_INSUFFICIENT_SEATS;
-            MessageSerializer::marshalReserveSeatsResponse(req_id, status, remaining, response);
-
-            // 通知监控客户端
-            if (success) {
-                monitor_manager_.notifyMonitors(flight_id, remaining);
-            }
-            break;
-        }
-
-        case MSG_REGISTER_MONITOR_REQUEST: {
-            uint32_t req_id;
-            int32_t flight_id, interval_seconds;
-            MessageSerializer::unmarshalRegisterMonitorRequest(request, req_id, flight_id, interval_seconds);
-
-            // 检查航班是否存在
-            Flight flight;
-            bool found = flight_manager_.getFlightInfo(flight_id, flight);
-
-            int32_t status = found ? ERR_SUCCESS : ERR_FLIGHT_NOT_FOUND;
-            MessageSerializer::marshalRegisterMonitorResponse(req_id, status, response);
-
-            // 注册监控
-            if (found) {
-                monitor_manager_.registerMonitor(flight_id, interval_seconds, client_addr);
-            }
-            break;
-        }
-
-        case MSG_GET_SEAT_COUNT_REQUEST: {
-            uint32_t req_id;
-            int32_t flight_id;
-            MessageSerializer::unmarshalGetSeatCountRequest(request, req_id, flight_id);
-
-            int32_t seat_count;
-            bool found = flight_manager_.getSeatCount(flight_id, seat_count);
-
-            int32_t status = found ? ERR_SUCCESS : ERR_FLIGHT_NOT_FOUND;
-            MessageSerializer::marshalGetSeatCountResponse(req_id, status, seat_count, response);
-            break;
-        }
-
-        case MSG_CANCEL_RESERVATION_REQUEST: {
-            uint32_t req_id;
-            int32_t flight_id, seat_count;
-            MessageSerializer::unmarshalCancelReservationRequest(request, req_id, flight_id, seat_count);
-
-            int32_t new_count;
-            bool success = flight_manager_.cancelReservation(flight_id, seat_count, new_count);
-
-            int32_t status = success ? ERR_SUCCESS : ERR_FLIGHT_NOT_FOUND;
-            MessageSerializer::marshalCancelReservationResponse(req_id, status, new_count, response);
-
-            // 通知监控客户端
-            if (success) {
-                monitor_manager_.notifyMonitors(flight_id, new_count);
-            }
-            break;
-        }
-
-        default:
-            LOG_ERROR("Unknown message type: " + std::to_string(message_type));
-            return;
-    }
-
-    // 记录到历史
-    if (at_least_once_ && !response.empty()) {
-        history_.addEntry(request_id, response);
-    }
-
-    // 发送响应
-    sendResponse(response, client_addr);
-}
-
-void FlightServer::sendResponse(const std::vector<uint8_t>& response, const struct sockaddr_in& client_addr) {
-    if (shouldSimulateLoss()) {
-        LOG_WARNING("[Simulated] Response lost");
+    if (message_length != request.size()) {
+        LOG_WARNING("Dropped malformed request from " + client + ": length field " +
+                    std::to_string(message_length) + " but " + std::to_string(request.size()) + " bytes received");
         return;
     }
 
-    socket_.sendTo(response.data(), response.size(), client_addr);
-    LOG_INFO("Sent response, size=" + std::to_string(response.size()));
+    // ---- Duplicate detection --------------------------------------------------
+    // A retransmitted request carries the same request id from the same client
+    // address as the original. Under at-most-once it is answered from the reply
+    // history and NOT executed again. Under at-least-once there is no duplicate
+    // filtering: the history is only consulted to point out the re-execution in
+    // the log, and the request is executed like any other.
+    std::vector<uint8_t> stored_reply;
+    if (history_.findEntry(client_addr, request_id, stored_reply)) {
+        if (semantics_ == Semantics::AT_MOST_ONCE) {
+            LOG_INFO("Duplicate " + std::string(getMessageTypeName(message_type)) + " #" +
+                     std::to_string(request_id) + " from " + client +
+                     ": already executed, re-sending the stored reply (at-most-once: NOT re-executed)");
+            sendReply(stored_reply, request_id, client_addr, client);
+            return;
+        }
+        LOG_WARNING("Duplicate " + std::string(getMessageTypeName(message_type)) + " #" +
+                    std::to_string(request_id) + " from " + client +
+                    ": was already executed, executing AGAIN (at-least-once: no duplicate filtering)");
+    }
+
+    // ---- Execution ----------------------------------------------------------
+    std::vector<uint8_t> reply;
+    try {
+        if (!execute(message_type, request, client_addr, client, reply)) {
+            return;
+        }
+    } catch (const std::exception& e) {
+        LOG_WARNING("Dropped malformed request #" + std::to_string(request_id) + " from " + client + ": " + e.what());
+        return;
+    }
+
+    history_.addEntry(client_addr, request_id, reply);
+    sendReply(reply, request_id, client_addr, client);
+}
+
+bool FlightServer::execute(uint32_t message_type, const std::vector<uint8_t>& request,
+                           const struct sockaddr_in& client_addr, const std::string& client,
+                           std::vector<uint8_t>& reply) {
+    uint32_t request_id = 0;
+
+    switch (message_type) {
+        // Service 1: flight ids for a source/destination pair (idempotent)
+        case MSG_QUERY_FLIGHT_REQUEST: {
+            std::string source, destination;
+            MessageSerializer::unmarshalQueryFlightRequest(request, request_id, source, destination);
+            logRequest(request_id, client, "QUERY_FLIGHT source=\"" + source + "\" destination=\"" + destination + "\"");
+
+            std::vector<int32_t> flight_ids;
+            int32_t status = ERR_INVALID_INPUT;
+            if (!source.empty() && !destination.empty()) {
+                flight_ids = flight_manager_.queryFlight(source, destination);
+                status = flight_ids.empty() ? ERR_NO_FLIGHTS_FOUND : ERR_SUCCESS;
+            }
+
+            MessageSerializer::marshalQueryFlightResponse(request_id, status, flight_ids, reply);
+            logReply(request_id, client, status, status == ERR_SUCCESS ? "flights [" + joinIds(flight_ids) + "]" : "");
+            return true;
+        }
+
+        // Service 2: departure time, airfare and seat availability (idempotent)
+        case MSG_GET_FLIGHT_INFO_REQUEST: {
+            int32_t flight_id;
+            MessageSerializer::unmarshalGetFlightInfoRequest(request, request_id, flight_id);
+            logRequest(request_id, client, "GET_FLIGHT_INFO flight=" + std::to_string(flight_id));
+
+            Flight flight;
+            int32_t status = flight_manager_.getFlightInfo(flight_id, flight) ? ERR_SUCCESS : ERR_FLIGHT_NOT_FOUND;
+
+            MessageSerializer::marshalGetFlightInfoResponse(request_id, status, flight, reply);
+            logReply(request_id, client, status, status != ERR_SUCCESS ? "" :
+                     flight.source + " -> " + flight.destination + ", departs " + flight.departure_time.toString() +
+                     ", airfare " + formatFare(flight.airfare) + ", seats " + std::to_string(flight.seat_availability));
+            return true;
+        }
+
+        // Service 3: reserve seats (NON-idempotent: each execution removes seats)
+        case MSG_RESERVE_SEATS_REQUEST: {
+            int32_t flight_id, seat_count;
+            MessageSerializer::unmarshalReserveSeatsRequest(request, request_id, flight_id, seat_count);
+            logRequest(request_id, client, "RESERVE_SEATS flight=" + std::to_string(flight_id) +
+                       " seats=" + std::to_string(seat_count));
+
+            int32_t remaining = 0;
+            int32_t status = ERR_SUCCESS;
+            bool reserved = flight_manager_.reserveSeats(flight_id, seat_count, remaining, &status);
+
+            MessageSerializer::marshalReserveSeatsResponse(request_id, status, remaining, reply);
+            logReply(request_id, client, status,
+                     status == ERR_FLIGHT_NOT_FOUND ? "" : "seats left " + std::to_string(remaining));
+
+            if (reserved) {
+                monitor_manager_.notifyMonitors(socket_, flight_id, remaining);
+            }
+            return true;
+        }
+
+        // Service 4: register for seat-availability callbacks
+        case MSG_REGISTER_MONITOR_REQUEST: {
+            int32_t flight_id, interval_seconds;
+            MessageSerializer::unmarshalRegisterMonitorRequest(request, request_id, flight_id, interval_seconds);
+            logRequest(request_id, client, "REGISTER_MONITOR flight=" + std::to_string(flight_id) +
+                       " interval=" + std::to_string(interval_seconds) + "s");
+
+            Flight flight;
+            int32_t status = ERR_SUCCESS;
+            if (!flight_manager_.getFlightInfo(flight_id, flight)) {
+                status = ERR_FLIGHT_NOT_FOUND;
+            } else if (interval_seconds <= 0 || interval_seconds > MAX_MONITOR_INTERVAL_SECONDS) {
+                status = ERR_INVALID_MONITOR_INTERVAL;
+            }
+
+            if (status == ERR_SUCCESS) {
+                // The address the request came from is where callbacks will go.
+                monitor_manager_.registerMonitor(flight_id, interval_seconds, client_addr);
+            }
+
+            MessageSerializer::marshalRegisterMonitorResponse(request_id, status, reply);
+            logReply(request_id, client, status);
+            return true;
+        }
+
+        // Service 5: seat availability only (idempotent)
+        case MSG_GET_SEAT_COUNT_REQUEST: {
+            int32_t flight_id;
+            MessageSerializer::unmarshalGetSeatCountRequest(request, request_id, flight_id);
+            logRequest(request_id, client, "GET_SEAT_COUNT flight=" + std::to_string(flight_id));
+
+            int32_t seat_count = 0;
+            int32_t status = flight_manager_.getSeatCount(flight_id, seat_count) ? ERR_SUCCESS : ERR_FLIGHT_NOT_FOUND;
+
+            MessageSerializer::marshalGetSeatCountResponse(request_id, status, seat_count, reply);
+            logReply(request_id, client, status,
+                     status == ERR_SUCCESS ? "seat count " + std::to_string(seat_count) : "");
+            return true;
+        }
+
+        // Service 6: give back reserved seats (NON-idempotent: each execution adds seats)
+        case MSG_CANCEL_RESERVATION_REQUEST: {
+            int32_t flight_id, seat_count;
+            MessageSerializer::unmarshalCancelReservationRequest(request, request_id, flight_id, seat_count);
+            logRequest(request_id, client, "CANCEL_RESERVATION flight=" + std::to_string(flight_id) +
+                       " seats=" + std::to_string(seat_count));
+
+            int32_t new_count = 0;
+            int32_t status = ERR_SUCCESS;
+            bool cancelled = flight_manager_.cancelReservation(flight_id, seat_count, new_count, &status);
+
+            MessageSerializer::marshalCancelReservationResponse(request_id, status, new_count, reply);
+            logReply(request_id, client, status,
+                     status == ERR_FLIGHT_NOT_FOUND ? "" : "seats available " + std::to_string(new_count));
+
+            if (cancelled) {
+                monitor_manager_.notifyMonitors(socket_, flight_id, new_count);
+            }
+            return true;
+        }
+
+        default:
+            LOG_WARNING("Ignored message from " + client + ": unknown message type " + std::to_string(message_type));
+            return false;
+    }
+}
+
+void FlightServer::sendReply(const std::vector<uint8_t>& reply, uint32_t request_id,
+                             const struct sockaddr_in& client_addr, const std::string& client) {
+    if (shouldSimulateLoss()) {
+        LOG_WARNING("[Simulated loss] reply #" + std::to_string(request_id) + " to " + client + " dropped");
+        return;
+    }
+
+    socket_.sendTo(reply.data(), reply.size(), client_addr);
 }
 
 bool FlightServer::shouldSimulateLoss() {
     if (loss_rate_ <= 0.0) return false;
     if (loss_rate_ >= 1.0) return true;
 
-    double random = static_cast<double>(rand()) / RAND_MAX;
+    // mt19937 produces the same sequence on every platform for a given seed,
+    // so a seeded experiment is repeatable.
+    double random = static_cast<double>(rng_()) / 4294967296.0;
     return random < loss_rate_;
 }

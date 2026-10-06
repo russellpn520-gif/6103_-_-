@@ -1,70 +1,118 @@
 /**
  * @file client_main.cpp
- * @brief 客户端主程序
+ * @brief Client entry point: parses the command line and runs the text menu.
  */
 
 #include "client/flight_client.h"
 #include "client/client_ui.h"
+#include "common/cli_options.h"
 #include "common/logger.h"
 #include <iostream>
-#include <cstring>
+#include <cstdio>
+#include <ctime>
 #include <memory>
+#include <string>
+
+namespace {
 
 void printUsage(const char* program_name) {
     std::cout << "Usage: " << program_name << " [options]\n"
               << "Options:\n"
-              << "  --server=<ip>         Server IP address (default: 127.0.0.1)\n"
-              << "  --port=<port>         Server port (default: 8080)\n"
-              << "  --at-least-once       Enable at-least-once semantic\n"
-              << "  --loss-rate=<rate>    Message loss rate (0.0-1.0, default: 0.0)\n"
-              << "  --log-file=<file>     Log to file (default: console only)\n"
-              << "  --help                Show this help\n";
+              << "  --server=<ip>        Server IPv4 address (default: 127.0.0.1)\n"
+              << "  --port=<port>        Server port (default: 8080)\n"
+              << "  --semantics=<s>      Invocation semantics (default: at-most-once); use the same\n"
+              << "                       value as the server:\n"
+              << "                         at-most-once / at-least-once: retransmit after a timeout\n"
+              << "                         maybe: send each request once (baseline, no retransmission)\n"
+              << "  --timeout-ms=<ms>    Time to wait for a reply before retransmitting (default: 2000)\n"
+              << "  --retries=<n>        Retransmissions after the first attempt (default: 5)\n"
+              << "  --loss-rate=<p>      Probability 0.0-1.0 that a request is dropped (simulated request loss)\n"
+              << "  --seed=<n>           Seed for the loss simulation, to repeat an experiment\n"
+              << "  --log-file=<file>    Also append the log to <file>\n"
+              << "  --help               Show this help\n";
 }
+
+} // namespace
 
 int main(int argc, char* argv[]) {
     std::string server_ip = "127.0.0.1";
-    uint16_t port = 8080;
-    bool at_least_once = false;
+    long long port = 8080;
+    Semantics semantics = Semantics::AT_MOST_ONCE;
+    long long timeout_ms = 2000;
+    long long retries = 5;
     double loss_rate = 0.0;
+    long long seed = static_cast<long long>(time(nullptr) & 0xffffffff);
     std::string log_file;
 
-    // 解析命令行参数
     for (int i = 1; i < argc; i++) {
-        if (strncmp(argv[i], "--server=", 9) == 0) {
-            server_ip = argv[i] + 9;
-        } else if (strncmp(argv[i], "--port=", 7) == 0) {
-            port = static_cast<uint16_t>(atoi(argv[i] + 7));
-        } else if (strcmp(argv[i], "--at-least-once") == 0) {
-            at_least_once = true;
-        } else if (strncmp(argv[i], "--loss-rate=", 12) == 0) {
-            loss_rate = atof(argv[i] + 12);
-        } else if (strncmp(argv[i], "--log-file=", 11) == 0) {
-            log_file = argv[i] + 11;
-        } else if (strcmp(argv[i], "--help") == 0) {
+        const std::string arg = argv[i];
+        std::string value;
+        bool valid = true;
+
+        if (arg == "--help" || arg == "-h") {
             printUsage(argv[0]);
             return 0;
+        } else if (cli::matchOption(arg, "--server=", value)) {
+            server_ip = value;
+            valid = !value.empty();
+        } else if (cli::matchOption(arg, "--port=", value)) {
+            valid = cli::parseInteger(value, 1, 65535, port);
+        } else if (cli::matchOption(arg, "--semantics=", value)) {
+            valid = parseSemantics(value, semantics);
+        } else if (cli::matchOption(arg, "--timeout-ms=", value)) {
+            valid = cli::parseInteger(value, 10, 60000, timeout_ms);
+        } else if (cli::matchOption(arg, "--retries=", value)) {
+            valid = cli::parseInteger(value, 0, 100, retries);
+        } else if (cli::matchOption(arg, "--loss-rate=", value)) {
+            valid = cli::parseReal(value, 0.0, 1.0, loss_rate);
+        } else if (cli::matchOption(arg, "--seed=", value)) {
+            valid = cli::parseInteger(value, 0, 4294967295LL, seed);
+        } else if (cli::matchOption(arg, "--log-file=", value)) {
+            log_file = value;
+            valid = !value.empty();
+        } else {
+            valid = false;
+        }
+
+        if (!valid) {
+            std::cerr << "Invalid option: " << arg << "\n\n";
+            printUsage(argv[0]);
+            return 1;
         }
     }
 
-    // 启用文件日志（如果指定）
     if (!log_file.empty()) {
         Logger::getInstance().enableFileOutput(log_file);
     }
 
-    LOG_INFO("Starting flight client...");
+    auto client = std::make_shared<FlightClient>(server_ip, static_cast<uint16_t>(port));
+    if (!client->isValid()) {
+        LOG_ERROR("Could not set up the client (check the --server address)");
+        return 1;
+    }
+    client->setSemantics(semantics);
+    client->setTimeoutMs(static_cast<int>(timeout_ms));
+    client->setMaxRetries(static_cast<int>(retries));
+    client->setLossRate(loss_rate);
+    client->setSeed(static_cast<uint32_t>(seed));
+
+    char loss_text[32];
+    snprintf(loss_text, sizeof(loss_text), "%.2f", loss_rate);
+
+    LOG_INFO("Starting flight client (local UDP port " + std::to_string(client->localPort()) + ")");
     LOG_INFO("Server: " + server_ip + ":" + std::to_string(port));
-    LOG_INFO("At-least-once: " + std::string(at_least_once ? "enabled" : "disabled"));
-    LOG_INFO("Loss rate: " + std::to_string(loss_rate));
+    if (semantics == Semantics::MAYBE) {
+        LOG_INFO("Invocation semantics: maybe (each request is sent once, no retransmission)");
+    } else {
+        LOG_INFO(std::string("Invocation semantics: ") + getSemanticsName(semantics) +
+                 " (retransmit after " + std::to_string(timeout_ms) + " ms, up to " +
+                 std::to_string(retries) + " times; start the server with the same --semantics)");
+    }
+    LOG_INFO(std::string("Simulated request loss rate: ") + loss_text + " (seed " + std::to_string(seed) + ")");
     if (!log_file.empty()) {
         LOG_INFO("Log file: " + log_file);
     }
 
-    // 创建客户端
-    auto client = std::make_shared<FlightClient>(server_ip, port);
-    client->setAtLeastOnce(at_least_once);
-    client->setLossRate(loss_rate);
-
-    // 创建UI并运行
     ClientUI ui(client);
     ui.run();
 

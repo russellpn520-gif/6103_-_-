@@ -1,170 +1,203 @@
-#!/bin/bash
+#!/usr/bin/env bash
+#
+# Invocation-semantics experiment (project description, section 3.3).
+#
+# Reply loss is simulated at the server (--loss-rate), so the client times out
+# and retransmits requests that the server has in fact already executed. The
+# script compares what each invocation semantics does with these duplicates:
+#
+#   Experiment 1  Non-idempotent operation: N reservations of 1 seat each.
+#                   maybe          no retransmission: the client reports failures
+#                                  although the server did reserve the seats
+#                   at-least-once  every retransmission is executed again, so
+#                                  MORE than N seats are taken  -> wrong result
+#                   at-most-once   duplicates are answered from the reply history,
+#                                  so exactly N seats are taken -> correct result
+#   Experiment 2  Idempotent operation: N seat-count queries under at-least-once.
+#                 Executing a query again does no harm: every answer is correct.
+#   Experiment 3  The demo scenario under at-most-once: one client monitors the
+#                 flight while another one reserves seats. Both clients number
+#                 their first request #1; duplicates are detected per (client
+#                 address, request id), so the reservation is executed (not
+#                 mistaken for a duplicate) and the monitor gets the callback.
+#
+# Usage: build first (make), then run  ./tools/test_semantics.sh
+# Settings can be changed through environment variables, for example
+#        N=50 LOSS=0.3 ./tools/test_semantics.sh
+# The server and client logs of every run are kept in experiment_logs/.
 
-# 调用语义测试脚本
+set -u
+cd "$(dirname "$0")/.." || exit 1
 
-echo "=========================================="
-echo "调用语义测试"
-echo "=========================================="
-echo ""
+N=${N:-20}                    # operations per run
+LOSS=${LOSS:-0.5}             # probability that the server drops a reply
+SEED=${SEED:-6103}            # seed of the loss simulation (same seed -> same losses)
+TIMEOUT_MS=${TIMEOUT_MS:-300} # client retransmission timeout
+RETRIES=${RETRIES:-8}         # client retransmissions per request
+PORT=${PORT:-9300}            # each run uses the next port
+FLIGHT=1001                   # test flight ...
+INITIAL_SEATS=120             # ... and its seats in the test data
+LOG_DIR=experiment_logs
 
-# 颜色定义
-GREEN='\033[0;32m'
-RED='\033[0;31m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
-
-# 测试结果
-PASS=0
-FAIL=0
-
-# 启动服务器
-start_server() {
-    local port=$1
-    local at_least_once=$2
-    local loss_rate=$3
-
-    if [ "$at_least_once" = "true" ]; then
-        ./server --port=$port --at-least-once --loss-rate=$loss_rate > /tmp/server.log 2>&1 &
-    else
-        ./server --port=$port --loss-rate=$loss_rate > /tmp/server.log 2>&1 &
-    fi
-
-    sleep 1
-    echo $!
-}
-
-# 停止服务器
-stop_server() {
-    pkill -f "./server"
-    sleep 1
-}
-
-# 测试函数
-test_query() {
-    local port=$1
-    local expected_flights=$2
-
-    result=$(printf "1\nBeijing\nShanghai\n0\n" | ./client --port=$port 2>&1 | grep -c "Flight 100")
-
-    if [ "$result" -ge "$expected_flights" ]; then
-        echo -e "${GREEN}✓ PASS${NC}: 查询到 $result 个航班"
-        ((PASS++))
-        return 0
-    else
-        echo -e "${RED}✗ FAIL${NC}: 期望至少 $expected_flights 个航班，实际 $result 个"
-        ((FAIL++))
-        return 1
-    fi
-}
-
-# 测试 At-Most-Once 语义
-echo "测试 1: At-Most-Once 语义"
-echo "----------------------------------------"
-PID=$(start_server 8081 false 0.0)
-echo "服务器启动 (PID: $PID, At-Most-Once, 无丢失)"
-test_query 8081 3
-stop_server
-echo ""
-
-# 测试 At-Most-Once + 消息丢失
-echo "测试 2: At-Most-Once + 消息丢失"
-echo "----------------------------------------"
-PID=$(start_server 8082 false 0.3)
-echo "服务器启动 (PID: $PID, At-Most-Once, 30% 丢失)"
-result=$(printf "1\nBeijing\nShanghai\n0\n" | ./client --port=8082 2>&1)
-if echo "$result" | grep -q "Server error\|Receive timeout"; then
-    echo -e "${YELLOW}⚠ 预期行为${NC}: 消息丢失导致请求失败（At-Most-Once 不重试）"
-    ((PASS++))
-else
-    echo -e "${GREEN}✓ PASS${NC}: 请求成功（未丢失）"
-    ((PASS++))
-fi
-stop_server
-echo ""
-
-# 测试 At-Least-Once 语义
-echo "测试 3: At-Least-Once 语义"
-echo "----------------------------------------"
-PID=$(start_server 8083 true 0.0)
-echo "服务器启动 (PID: $PID, At-Least-Once, 无丢失)"
-test_query 8083 3
-stop_server
-echo ""
-
-# 测试 At-Least-Once + 消息丢失
-echo "测试 4: At-Least-Once + 消息丢失（自动重试）"
-echo "----------------------------------------"
-PID=$(start_server 8084 true 0.3)
-echo "服务器启动 (PID: $PID, At-Least-Once, 30% 丢失)"
-result=$(printf "1\nBeijing\nShanghai\n0\n" | ./client --port=8084 --at-least-once 2>&1)
-if echo "$result" | grep -q "Flight 100"; then
-    echo -e "${GREEN}✓ PASS${NC}: At-Least-Once 重试成功"
-    ((PASS++))
-else
-    echo -e "${RED}✗ FAIL${NC}: At-Least-Once 重试失败"
-    ((FAIL++))
-fi
-stop_server
-echo ""
-
-# 测试幂等性
-echo "测试 5: 幂等服务测试（At-Least-Once）"
-echo "----------------------------------------"
-PID=$(start_server 8085 true 0.0)
-echo "服务器启动 (PID: $PID, At-Least-Once)"
-
-# 多次查询座位数（幂等操作）
-result1=$(printf "4\n1001\n0\n" | ./client --port=8085 --at-least-once 2>&1 | grep "Available seats:")
-result2=$(printf "4\n1001\n0\n" | ./client --port=8085 --at-least-once 2>&1 | grep "Available seats:")
-
-if [ "$result1" = "$result2" ]; then
-    echo -e "${GREEN}✓ PASS${NC}: 幂等查询结果一致"
-    echo "  第一次: $result1"
-    echo "  第二次: $result2"
-    ((PASS++))
-else
-    echo -e "${RED}✗ FAIL${NC}: 幂等查询结果不一致"
-    ((FAIL++))
-fi
-stop_server
-echo ""
-
-# 测试非幂等操作
-echo "测试 6: 非幂等操作测试"
-echo "----------------------------------------"
-PID=$(start_server 8086 true 0.0)
-echo "服务器启动 (PID: $PID, At-Least-Once)"
-
-# 预订座位（非幂等操作）
-result=$(printf "3\n1001\n5\n0\n" | ./client --port=8086 --at-least-once 2>&1 | grep "Remaining seats:")
-echo "预订结果: $result"
-
-# 再次查询座位数验证
-result2=$(printf "4\n1001\n0\n" | ./client --port=8086 --at-least-once 2>&1 | grep "Available seats:")
-echo "查询结果: $result2"
-
-if echo "$result2" | grep -q "115"; then
-    echo -e "${GREEN}✓ PASS${NC}: 非幂等操作正确执行"
-    ((PASS++))
-else
-    echo -e "${YELLOW}⚠ 注意${NC}: 座位数可能因多次执行而变化"
-    ((PASS++))
-fi
-stop_server
-echo ""
-
-# 总结
-echo "=========================================="
-echo "测试总结"
-echo "=========================================="
-echo -e "通过: ${GREEN}$PASS${NC}"
-echo -e "失败: ${RED}$FAIL${NC}"
-echo ""
-
-if [ $FAIL -eq 0 ]; then
-    echo -e "${GREEN}所有测试通过！${NC}"
-    exit 0
-else
-    echo -e "${RED}部分测试失败${NC}"
+if [ -f ./server.exe ]; then EXE=.exe; else EXE=; fi
+SERVER=./server$EXE
+CLIENT=./client$EXE
+if [ ! -f "$SERVER" ] || [ ! -f "$CLIENT" ]; then
+    echo "server/client not found - build them first with: make"
     exit 1
 fi
+mkdir -p "$LOG_DIR"
+
+PASS=0
+FAIL=0
+SERVER_PID=""
+
+pass() { echo "  [PASS] $1"; PASS=$((PASS + 1)); }
+fail() { echo "  [FAIL] $1"; FAIL=$((FAIL + 1)); }
+
+# start_server <semantics> <reply loss rate> <log name>
+start_server() {
+    PORT=$((PORT + 1))
+    "$SERVER" --port=$PORT --semantics="$1" --loss-rate="$2" --seed=$SEED > "$LOG_DIR/$3-server.log" 2>&1 &
+    SERVER_PID=$!
+    sleep 1
+}
+
+stop_server() {
+    if [ -n "$SERVER_PID" ]; then
+        kill "$SERVER_PID" 2>/dev/null
+        wait "$SERVER_PID" 2>/dev/null
+        SERVER_PID=""
+    fi
+}
+trap stop_server EXIT
+
+# run_client <semantics> <log name>; the menu input is read from stdin
+run_client() {
+    "$CLIENT" --port=$PORT --semantics="$1" --timeout-ms=$TIMEOUT_MS --retries=$RETRIES --seed=$SEED \
+        > "$LOG_DIR/$2-client.log" 2>&1
+}
+
+# count <pattern> <file>: number of matching lines
+count() {
+    tr -d '\r' < "$2" 2>/dev/null | grep -c -- "$1" || true   # tr: Windows builds write CRLF
+}
+
+# seat_count <log name>: current seats of the test flight, asked by a new
+# client that retransmits (a query is idempotent, so this is safe in any mode)
+seat_count() {
+    printf '4\n%s\n0\n' "$FLIGHT" | run_client at-least-once "$1"
+    grep -o 'Available seats: -*[0-9]*' "$LOG_DIR/$1-client.log" | tail -n 1 | awk '{print $3}'
+}
+
+echo "=================================================================="
+echo " Invocation semantics experiment"
+echo " $N operations per run, server drops each reply with p = $LOSS (seed $SEED)"
+echo " client timeout $TIMEOUT_MS ms, up to $RETRIES retransmissions"
+echo "=================================================================="
+
+# ------------------------------------------------------------------
+echo ""
+echo "Experiment 1: non-idempotent operation ($N x reserve 1 seat on flight $FLIGHT, $INITIAL_SEATS seats)"
+echo ""
+printf '  %-14s %9s %7s %16s %11s %12s\n' "semantics" "successes" "errors" "retransmissions" "executions" "seats taken"
+printf '  %-14s %9s %7s %16s %11s %12s\n' "---------" "---------" "------" "---------------" "----------" "-----------"
+
+RESULTS=""
+for SEM in maybe at-least-once at-most-once; do
+    # "maybe" differs from at-least-once only on the client (no retransmission)
+    SERVER_SEM=$SEM
+    [ "$SEM" = maybe ] && SERVER_SEM=at-least-once
+
+    start_server "$SERVER_SEM" "$LOSS" "exp1-$SEM"
+    { for _ in $(seq 1 "$N"); do printf '3\n%s\n1\n' "$FLIGHT"; done; printf '0\n'; } | run_client "$SEM" "exp1-$SEM"
+    FINAL=$(seat_count "exp1-$SEM-final")
+    stop_server
+
+    CLOG="$LOG_DIR/exp1-$SEM-client.log"
+    SLOG="$LOG_DIR/exp1-$SEM-server.log"
+    OK=$(count 'Reservation successful' "$CLOG")
+    ERRORS=$(count 'Error: ' "$CLOG")
+    RETRANS=$(count 'retransmitting' "$CLOG")
+    EXECUTED=$(count '] Request #[0-9]* from .*: RESERVE_SEATS' "$SLOG")
+    TAKEN=$((INITIAL_SEATS - ${FINAL:-$INITIAL_SEATS}))
+
+    printf '  %-14s %9s %7s %16s %11s %12s\n' "$SEM" "$OK" "$ERRORS" "$RETRANS" "$EXECUTED" "$TAKEN"
+    RESULTS="$RESULTS $SEM:$OK:$ERRORS:$EXECUTED:$TAKEN"
+done
+
+echo ""
+for RESULT in $RESULTS; do
+    IFS=: read -r SEM OK ERRORS EXECUTED TAKEN <<< "$RESULT"
+    case $SEM in
+        maybe)
+            if [ "$ERRORS" -gt 0 ] && [ "$TAKEN" -gt "$OK" ]; then
+                pass "maybe: client was told $ERRORS reservation(s) failed, yet $TAKEN seats were taken for $OK successes"
+            else
+                fail "maybe: expected failed calls whose seats were nevertheless taken (no reply lost? raise LOSS or N)"
+            fi ;;
+        at-least-once)
+            if [ "$TAKEN" -gt "$N" ]; then
+                pass "at-least-once gives a WRONG result: $TAKEN seats taken for $N one-seat reservations ($EXECUTED executions)"
+            else
+                fail "at-least-once: no re-execution observed (no reply lost? raise LOSS or N)"
+            fi ;;
+        at-most-once)
+            if [ "$EXECUTED" -le "$N" ] && [ "$TAKEN" -eq "$EXECUTED" ] && [ "$TAKEN" -ge "$OK" ]; then
+                pass "at-most-once is correct: each reservation executed once, $TAKEN seats taken for $OK successful reservations"
+            else
+                fail "at-most-once: $EXECUTED executions and $TAKEN seats taken for $N requests"
+            fi ;;
+    esac
+done
+
+# ------------------------------------------------------------------
+echo ""
+echo "Experiment 2: idempotent operation under at-least-once ($N x get seat count of flight $FLIGHT)"
+echo ""
+start_server at-least-once "$LOSS" exp2
+{ for _ in $(seq 1 "$N"); do printf '4\n%s\n' "$FLIGHT"; done; printf '0\n'; } | run_client at-least-once exp2
+stop_server
+
+ANSWERS=$(count 'Available seats:' "$LOG_DIR/exp2-client.log")
+CORRECT=$(count "Available seats: $INITIAL_SEATS\$" "$LOG_DIR/exp2-client.log")
+REEXEC=$(count 'executing AGAIN' "$LOG_DIR/exp2-server.log")
+echo "  $ANSWERS answers, $CORRECT of them correct ($INITIAL_SEATS seats); $REEXEC duplicate request(s) were executed again"
+if [ "$ANSWERS" -gt 0 ] && [ "$CORRECT" -eq "$ANSWERS" ] && [ "$REEXEC" -gt 0 ]; then
+    pass "re-executing an idempotent operation does no harm: every answer is correct"
+elif [ "$REEXEC" -eq 0 ]; then
+    fail "no re-execution observed (no reply lost? raise LOSS or N)"
+else
+    fail "wrong answers for an idempotent query"
+fi
+
+# ------------------------------------------------------------------
+echo ""
+echo "Experiment 3: monitor + reservation from two clients, at-most-once, no loss"
+echo "              (both clients number their first request #1)"
+echo ""
+start_server at-most-once 0 exp3
+printf '6\n%s\n3\n0\n' "$FLIGHT" | run_client at-most-once exp3-monitor &
+MONITOR_PID=$!
+sleep 1
+printf '3\n%s\n2\n0\n' "$FLIGHT" | run_client at-most-once exp3-reserve
+wait "$MONITOR_PID"
+stop_server
+
+if grep -q "Reservation successful! Remaining seats: $((INITIAL_SEATS - 2))" "$LOG_DIR/exp3-reserve-client.log"; then
+    pass "reservation #1 of the second client was executed, not mistaken for request #1 of the first client"
+else
+    fail "reservation of the second client did not succeed"
+fi
+if grep -q "\[Callback\] Flight $FLIGHT seat availability is now $((INITIAL_SEATS - 2))" "$LOG_DIR/exp3-monitor-client.log"; then
+    pass "monitoring client received the callback with the new seat availability"
+else
+    fail "monitoring client did not receive the callback"
+fi
+
+# ------------------------------------------------------------------
+echo ""
+echo "=================================================================="
+echo " Passed: $PASS   Failed: $FAIL   (logs: $LOG_DIR/)"
+echo "=================================================================="
+[ "$FAIL" -eq 0 ]

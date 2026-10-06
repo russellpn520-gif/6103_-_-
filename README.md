@@ -1,148 +1,94 @@
 # 分布式航班信息系统
 
-基于 UDP 的分布式航班信息系统，支持航班查询、座位预订、监控回调等功能。
+SC6103 课程项目：基于 UDP 的分布式航班信息系统（C++）。支持航班查询、座位预订、回调监控，以及 at-least-once / at-most-once 两种调用语义的对比实验。
 
-## 📋 目录
+## 目录
 
 - [功能特性](#功能特性)
 - [系统要求](#系统要求)
 - [快速开始](#快速开始)
 - [详细使用说明](#详细使用说明)
-- [测试指南](#测试指南)
-- [脚本说明](#脚本说明)
-- [跨平台兼容性](#跨平台兼容性)
+- [调用语义说明](#调用语义说明)
+- [消息格式](#消息格式)
+- [测试与实验](#测试与实验)
+- [跨机器演示](#跨机器演示)
 - [常见问题](#常见问题)
+- [项目结构](#项目结构)
 
 ---
 
 ## 功能特性
 
-### 核心服务
+### 服务
 
-- ✅ **服务 1**：查询航班（按出发地和目的地）
-- ✅ **服务 2**：查询航班详情
-- ✅ **服务 3**：预订座位（非幂等操作）
-- ✅ **服务 4**：监控座位更新（回调机制）
-- ✅ **服务 5**：查询剩余座位数（幂等操作）
-- ✅ **服务 6**：取消预订（非幂等操作）
+| # | 服务 | 幂等性 | 说明 |
+|---|------|--------|------|
+| 1 | 按出发地/目的地查询航班 | 幂等 | 返回所有匹配的航班号；无匹配时返回错误 |
+| 2 | 查询航班详情 | 幂等 | 出发时间、票价、剩余座位；航班不存在时返回错误 |
+| 3 | 预订座位 | **非幂等** | 每执行一次扣一次座位；航班不存在、座位数非正、座位不足分别返回对应错误 |
+| 4 | 监控座位变化（回调） | — | 在监控时长内，任何客户端预订/取消后，服务器把新座位数回调给所有监控者 |
+| 5 | 查询剩余座位数（自定义） | 幂等 | 只读操作，执行多少次结果都一样 |
+| 6 | 取消预订（自定义） | **非幂等** | 每执行一次退回一次座位；不能退回超过已预订的座位数 |
 
 ### 分布式特性
 
-- ✅ **两种调用语义**
-  - At-Most-Once（最多一次）：不重试，可能丢失
-  - At-Least-Once（至少一次）：自动重试，保证成功
-- ✅ **消息丢失模拟**：可配置丢失率（0-100%）
-- ✅ **回调机制**：服务器主动通知客户端座位更新
-- ✅ **幂等性设计**：查询操作支持幂等
-- ✅ **去重机制**：基于请求 ID 的历史记录
+- **自行设计的消息格式与编组**：整数用 `htonl/ntohl`，字符串带长度前缀，浮点数按 IEEE-754 位模式传输，不使用任何 RMI/RPC/序列化库
+- **三种调用语义**：maybe（仅客户端，作对照）、at-least-once、at-most-once，由启动参数选择
+- **重复请求过滤**：按 **（客户端 IP, 端口, 请求 ID）** 识别重复请求，服务器保存回复历史
+- **消息丢失模拟**：客户端模拟请求丢失，服务器模拟回复丢失，可设随机种子以复现实验
+- **回调**：从服务器主 socket 发出；同一客户端重复注册只续期，不会收到重复回调
+- **跨平台**：macOS、Linux、Windows（Winsock）
 
 ---
 
 ## 系统要求
 
-### 必需
+| 平台 | 编译器 | 构建工具 |
+|------|--------|----------|
+| macOS | Xcode Command Line Tools（clang） | `make` |
+| Linux | g++（支持 C++17） | `make` |
+| Windows | MinGW-w64 g++（如 MSYS2 的 `mingw-w64-ucrt-x86_64-gcc`） | `mingw32-make` 或 MSYS2 的 `make` |
 
-- **操作系统**：macOS 或 Linux
-- **编译器**：g++ (支持 C++11)
-- **构建工具**：Make
-
-### 可选（运行测试需要）
-
-- **Google Test**：单元测试框架
-- **Homebrew**（macOS）：用于安装 Google Test
-
-### Windows 支持
-
-⚠️ **当前版本不支持 Windows**
-
-原因：
-- 使用 POSIX Socket API（Linux/macOS）
-- Windows 使用 Winsock，API 不兼容
-- 需要修改 Socket 代码才能支持 Windows
-
-解决方案：
-1. 使用 WSL (Windows Subsystem for Linux)
-2. 使用虚拟机（VirtualBox/VMware）
-3. 修改代码添加 Windows 支持（需要条件编译）
+单元测试另需 Google Test（可选）。
 
 ---
 
 ## 快速开始
 
-### 1. 编译项目
+### 1. 编译
 
 ```bash
-# 进入项目目录
-cd flight_system
-
-# 编译服务器和客户端
-make
+make            # Windows (MSYS2): mingw32-make
 ```
 
-**预期输出**：
-```
-Built: server
-Built: client
-```
+生成 `server` 和 `client`（Windows 上为 `server.exe` 和 `client.exe`）。
 
 ### 2. 启动服务器
 
 ```bash
-# 终端 1：启动服务器（默认端口 8080）
-./server
-```
-
-**预期输出**：
-```
-[2026-09-28 20:10:29] [INFO] Starting flight server...
-[2026-09-28 20:10:29] [INFO] Port: 8080
-[2026-09-28 20:10:29] [INFO] Server started on port 8080
-[2026-09-28 20:10:29] [INFO] Initialized 10 test flights
+./server --port=8080 --semantics=at-most-once
 ```
 
 ### 3. 启动客户端
 
 ```bash
-# 终端 2：启动客户端
-./client
+./client --server=127.0.0.1 --port=8080 --semantics=at-most-once
 ```
 
-**预期输出**：
 ```
-[2026-09-28 20:10:58] [INFO] Starting flight client...
-[2026-09-28 20:10:58] [INFO] Server: 127.0.0.1:8080
-
 ========== Flight Information System ==========
 1. Query flights by source and destination
 2. Get flight information
 3. Reserve seats
 4. Get seat count
 5. Cancel reservation
-6. Register monitor
+6. Monitor seat availability
 0. Exit
 ===============================================
 Enter your choice (0-6):
 ```
 
-### 4. 测试服务
-
-在客户端菜单中输入：
-
-```
-1           # 选择查询航班
-Beijing     # 输入出发地
-Shanghai    # 输入目的地
-```
-
-**预期输出**：
-```
-Found 3 flights:
-  Flight 1001
-  Flight 1002
-  Flight 1003
-```
-
-输入 `0` 退出客户端，按 `Ctrl+C` 停止服务器。
+选 `1`，输入 `Beijing`、`Shanghai`，应返回 1001、1002、1003 三个航班。输入 `0` 退出客户端，`Ctrl+C` 停止服务器。
 
 ---
 
@@ -150,563 +96,177 @@ Found 3 flights:
 
 ### 服务器参数
 
-```bash
-./server [选项]
-```
-
-| 参数 | 说明 | 默认值 | 示例 |
-|------|------|--------|------|
-| `--port=<port>` | 服务器端口 | 8080 | `./server --port=9090` |
-| `--at-least-once` | 启用 At-Least-Once 语义 | 禁用 | `./server --at-least-once` |
-| `--loss-rate=<rate>` | 消息丢失率（0.0-1.0） | 0.0 | `./server --loss-rate=0.3` |
-| `--log-file=<file>` | 日志输出到文件（同时输出到控制台） | 无（仅控制台） | `./server --log-file=server.log` |
+| 参数 | 说明 | 默认值 |
+|------|------|--------|
+| `--port=<port>` | 监听的 UDP 端口 | 8080 |
+| `--semantics=<s>` | `at-most-once`（过滤重复请求）或 `at-least-once`（每次都执行） | at-most-once |
+| `--loss-rate=<p>` | 每个**回复**被丢弃的概率（0.0-1.0） | 0 |
+| `--seed=<n>` | 丢失模拟的随机种子，相同种子可复现实验 | 当前时间 |
+| `--log-file=<file>` | 日志同时追加到文件 | 仅控制台 |
 
 ### 客户端参数
 
-```bash
-./client [选项]
-```
+| 参数 | 说明 | 默认值 |
+|------|------|--------|
+| `--server=<ip>` | 服务器 IPv4 地址 | 127.0.0.1 |
+| `--port=<port>` | 服务器端口 | 8080 |
+| `--semantics=<s>` | `at-most-once`、`at-least-once`（两者都超时重传）或 `maybe`（不重传） | at-most-once |
+| `--timeout-ms=<ms>` | 等待回复的超时时间，超时后重传 | 2000 |
+| `--retries=<n>` | 第一次发送之后最多重传几次 | 5 |
+| `--loss-rate=<p>` | 每个**请求**被丢弃的概率（0.0-1.0） | 0 |
+| `--seed=<n>` | 丢失模拟的随机种子 | 当前时间 |
+| `--log-file=<file>` | 日志同时追加到文件 | 仅控制台 |
 
-| 参数 | 说明 | 默认值 | 示例 |
-|------|------|--------|------|
-| `--server=<ip>` | 服务器 IP | 127.0.0.1 | `./client --server=192.168.1.100` |
-| `--port=<port>` | 服务器端口 | 8080 | `./client --port=9090` |
-| `--at-least-once` | 启用 At-Least-Once 语义 | 禁用 | `./client --at-least-once` |
-| `--loss-rate=<rate>` | 消息丢失率（0.0-1.0） | 0.0 | `./client --loss-rate=0.3` |
-| `--log-file=<file>` | 日志输出到文件（同时输出到控制台） | 无（仅控制台） | `./client --log-file=client.log` |
-
-### 调用语义说明
-
-#### At-Most-Once（默认）
-
-- **行为**：消息丢失时不重试
-- **适用场景**：幂等操作（查询）
-- **特点**：性能较好，但可靠性低
-
-```bash
-# 默认模式（At-Most-Once）
-./server
-./client
-```
-
-#### At-Least-Once
-
-- **行为**：消息丢失时自动重试（最多 3 次）
-- **适用场景**：非幂等操作（预订、取消）
-- **特点**：可靠性高，但需要服务器去重
-
-```bash
-# 启用 At-Least-Once（客户端和服务器都要开启）
-./server --at-least-once
-./client --at-least-once
-```
-
-### 消息丢失模拟
-
-用于测试 UDP 的不可靠性和调用语义的行为。
-
-```bash
-# 30% 的消息会丢失
-./server --loss-rate=0.3
-./client --loss-rate=0.3
-```
-
-**测试场景**：
-
-1. **At-Most-Once + 消息丢失**
-   - 预期：请求可能失败
-   - 原因：不重试，丢失就失败
-
-2. **At-Least-Once + 消息丢失**
-   - 预期：请求最终成功
-   - 原因：自动重试，直到成功
+服务器会打印收到的每个请求（来源地址、请求 ID、参数）和产生的回复（状态与内容），重复请求和模拟丢包也会单独标出。
 
 ---
 
-## 测试指南
+## 调用语义说明
 
-### 1. 功能测试（无需安装）
+按课程（remote invocation 一章）的定义：
 
-#### 测试所有 6 个服务
+| 语义 | 客户端超时重传 | 服务器过滤重复请求 | 重复请求的处理 | 适用 |
+|------|----------------|--------------------|----------------|------|
+| maybe | 否 | — | — | 只作对照 |
+| at-least-once | 是 | 否 | **重新执行** | 仅幂等操作 |
+| at-most-once | 是 | 是 | 返回历史中保存的回复，**不重新执行** | 所有操作 |
+
+- 客户端在 at-least-once 和 at-most-once 下行为相同（都会用**同一个请求 ID** 重传），区别由服务器决定，所以**两端请用同一个 `--semantics`**。
+- 请求 ID 只在一个客户端内唯一（每个客户端都从 #1 开始），服务器用（客户端 IP, 端口, 请求 ID）识别重复请求。
+- 回复历史保留 60 秒，长于客户端的整个重传窗口（默认 2 s × 6 次）。
 
 ```bash
-# 终端 1：启动服务器
-./server
+# at-most-once（默认）
+./server --semantics=at-most-once
+./client --semantics=at-most-once
 
-# 终端 2：启动客户端
-./client
+# at-least-once：回复丢失时，非幂等操作会被重复执行
+./server --semantics=at-least-once --loss-rate=0.5
+./client --semantics=at-least-once
 ```
 
-在客户端中依次测试：
+---
 
-| 服务 | 操作步骤 | 预期结果 |
+## 消息格式
+
+所有整数为 32 位网络字节序。每条消息以 12 字节头开始：
+
+```
++--------------+--------------+----------------+-----------------------+
+| message_type |  request_id  | message_length |  body (按消息类型)     |
+|   uint32     |    uint32    | uint32（含头） |                       |
++--------------+--------------+----------------+-----------------------+
+```
+
+字符串编码为 `uint32 长度 + 字节`，时间编码为 5 个 int32（年、月、日、时、分），票价为 IEEE-754 float 的位模式。每种消息的完整格式见 [include/common/message_serializer.h](include/common/message_serializer.h)。解组时会检查消息类型和长度字段，格式错误的包会被丢弃并记录日志。
+
+---
+
+## 测试与实验
+
+### 1. 功能测试（手动）
+
+先启动 `./server`，再启动 `./client`，在客户端中依次测试：
+
+| 服务 | 菜单输入 | 预期结果 |
 |------|----------|----------|
-| 服务 1 | 选择 `1`，输入 `Beijing` `Shanghai` | 返回 3 个航班 |
-| 服务 2 | 选择 `2`，输入 `1001` | 返回航班详情 |
-| 服务 3 | 选择 `3`，输入 `1001` `2` | 预订成功，剩余 118 |
-| 服务 5 | 选择 `4`，输入 `1001` | 返回 118 |
-| 服务 6 | 选择 `5`，输入 `1001` `1` | 取消成功，座位数 119 |
-| 服务 4 | 选择 `6`，输入 `1001` `10` | 进入监控，10 秒后退出 |
+| 1 | `1` → `Beijing` → `Shanghai` | 3 个航班 |
+| 2 | `2` → `1001` | 航班详情（120 座） |
+| 3 | `3` → `1001` → `2` | 预订成功，剩余 118 |
+| 3（错误） | `3` → `9999` → `1` | Flight not found |
+| 5 | `4` → `1001` | 118 |
+| 6 | `5` → `1001` → `1` | 取消成功，座位数 119 |
+| 4 | 另开一个客户端 `6` → `1001` → `60`，再在第一个客户端预订 | 监控端收到 `[Callback]` |
 
-### 2. 调用语义测试（自动化）
+### 2. 调用语义实验（自动）
 
 ```bash
-# 运行调用语义测试脚本
+make
 ./tools/test_semantics.sh
 ```
 
-**预期输出**：
+服务器以 0.5 的概率丢弃回复，客户端超时后重传。三个实验：
+
+1. **非幂等操作**：20 次预订（每次 1 座），比较三种语义实际扣掉的座位数
+2. **幂等操作**：at-least-once 下 20 次查询座位数，结果始终正确
+3. **演示场景**：一个客户端监控、另一个客户端预订，两者的第一个请求都是 #1
+
+示例输出（seed 6103）：
+
 ```
-==========================================
-调用语义测试
-==========================================
+  semantics      successes  errors  retransmissions  executions  seats taken
+  maybe                  9      11                0          20           20
+  at-least-once         20       0               15          35           35
+  at-most-once          20       0               15          20           20
 
-测试 1: At-Most-Once 语义
-----------------------------------------
-✓ PASS: 查询到 3 个航班
-
-测试 2: At-Most-Once + 消息丢失
-----------------------------------------
-✓ PASS: 请求成功（未丢失）
-
-测试 3: At-Least-Once 语义
-----------------------------------------
-✓ PASS: 查询到 3 个航班
-
-测试 4: At-Least-Once + 消息丢失（自动重试）
-----------------------------------------
-✓ PASS: At-Least-Once 重试成功
-
-测试 5: 幂等服务测试（At-Least-Once）
-----------------------------------------
-✓ PASS: 幂等查询结果一致
-
-测试 6: 非幂等操作测试
-----------------------------------------
-✓ PASS: 非幂等操作正确执行
-
-==========================================
-测试总结
-==========================================
-通过: 6
-失败: 0
-
-所有测试通过！
+  [PASS] maybe: client was told 11 reservation(s) failed, yet 20 seats were taken for 9 successes
+  [PASS] at-least-once gives a WRONG result: 35 seats taken for 20 one-seat reservations (35 executions)
+  [PASS] at-most-once is correct: each reservation executed once, 20 seats taken for 20 successful reservations
 ```
 
-### 3. 单元测试（需要安装 Google Test）
+参数可用环境变量调整，例如 `N=50 LOSS=0.3 SEED=1 ./tools/test_semantics.sh`。每次运行的服务器和客户端日志保存在 `experiment_logs/`，可直接用于报告。
 
-#### 步骤 1：安装 Google Test
-
-**macOS（推荐）**：
+### 3. 单元测试（需要 Google Test）
 
 ```bash
-# 方法 1：使用 Homebrew
-brew install googletest
-
-# 方法 2：使用提供的脚本
-./tools/install_gtest.sh
+brew install googletest     # macOS；Ubuntu: sudo apt-get install libgtest-dev
+make test                   # 编译并运行 tests_run
 ```
 
-**手动安装**：
-
-```bash
-# 下载 Google Test
-git clone https://github.com/google/googletest.git
-cd googletest
-
-# 编译安装
-mkdir build && cd build
-cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local
-make
-sudo make install
-```
-
-**验证安装**：
-
-```bash
-# 检查库文件
-ls /usr/local/lib/libgtest*
-
-# 应该看到：
-# libgtest.a  libgtest_main.a
-```
-
-#### 步骤 2：编译测试
-
-```bash
-# 编译测试程序
-make test
-```
-
-**预期输出**：
-```
-Built: tests
-```
-
-#### 步骤 3：运行测试
-
-```bash
-# 运行所有测试
-./tests
-```
-
-**预期输出**：
-```
-[==========] Running 34 tests from 2 test suites.
-[----------] Global test environment set-up.
-[----------] 16 tests from MessageSerializerTest
-[ RUN      ] MessageSerializerTest.QueryFlightRequest
-[       OK ] MessageSerializerTest.QueryFlightRequest (0 ms)
-...
-[----------] 18 tests from FlightManagerTest
-[ RUN      ] FlightManagerTest.InitTestData
-[       OK ] FlightManagerTest.InitTestData (0 ms)
-...
-[==========] 34 tests from 2 test suites ran.
-[  PASSED  ] 34 tests.
-```
-
-#### 步骤 4：运行特定测试
-
-```bash
-# 只运行消息编组测试
-./tests --gtest_filter=MessageSerializerTest.*
-
-# 只运行航班管理器测试
-./tests --gtest_filter=FlightManagerTest.*
-
-# 运行单个测试
-./tests --gtest_filter=MessageSerializerTest.QueryFlightRequest
-```
+> 注意：`tests/` 下的测试源码目前不在仓库中（之前被 `.gitignore` 忽略），需要先由有这些文件的同学提交。
 
 ---
 
-## 脚本说明
+## 跨机器演示
 
-### build.sh
+演示要求服务器和两个客户端分别运行在不同电脑上（一个监控，一个预订）。
 
-**用途**：编译项目
+1. 在服务器电脑上查 IP：macOS/Linux 用 `ifconfig` 或 `ip addr`，Windows 用 `ipconfig`
+2. 服务器：`./server --port=8080 --semantics=at-most-once`
+3. 监控客户端：`./client --server=<服务器IP> --port=8080`，选 `6`，输入航班号和监控时长
+4. 预订客户端：`./client --server=<服务器IP> --port=8080`，选 `3` 预订同一航班，监控端会打印 `[Callback] ...`
+5. 演示语义差异：服务器和客户端都加 `--semantics=at-least-once`，服务器加 `--loss-rate=0.5`，多次预订后查询座位数，扣掉的座位比预订的多；换成 `at-most-once` 再做一次，结果正确
 
-```bash
-./tools/build.sh
-```
-
-**等同于**：
-```bash
-make
-```
-
----
-
-### clean.sh
-
-**用途**：清理编译产物
-
-```bash
-./tools/clean.sh
-```
-
-**等同于**：
-```bash
-make clean
-```
-
----
-
-### run_tests.sh
-
-**用途**：运行单元测试
-
-```bash
-./tools/run_tests.sh
-```
-
-**前提条件**：
-1. 已安装 Google Test
-2. 已运行 `make test` 编译测试
-
-**如果提示 "Tests not found"**：
-```bash
-# 先编译测试
-make test
-
-# 再运行
-./tools/run_tests.sh
-```
-
----
-
-### install_gtest.sh
-
-**用途**：安装 Google Test（macOS）
-
-```bash
-./tools/install_gtest.sh
-```
-
-**前提条件**：
-- 已安装 Homebrew
-
-**如果没有 Homebrew**：
-```bash
-# 安装 Homebrew
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-```
-
----
-
-### test_semantics.sh
-
-**用途**：测试调用语义（At-Most-Once / At-Least-Once）
-
-```bash
-./tools/test_semantics.sh
-```
-
-**测试内容**：
-1. At-Most-Once 语义
-2. At-Most-Once + 消息丢失
-3. At-Least-Once 语义
-4. At-Least-Once + 消息丢失（自动重试）
-5. 幂等服务测试
-6. 非幂等操作测试
-
-**预期结果**：所有测试通过（6/6）
-
----
-
-## 跨平台兼容性
-
-### 当前支持的平台
-
-| 平台 | 支持状态 | 说明 |
-|------|----------|------|
-| macOS | ✅ 完全支持 | 开发环境 |
-| Linux | ✅ 完全支持 | POSIX 兼容 |
-| Windows | ❌ 不支持 | 需要修改 Socket 代码 |
-
-### 为什么不支持 Windows？
-
-1. **Socket API 不同**
-   - macOS/Linux：POSIX Socket
-   - Windows：Winsock
-
-2. **头文件不同**
-   ```cpp
-   // macOS/Linux
-   #include <sys/socket.h>
-   #include <arpa/inet.h>
-   
-   // Windows
-   #include <winsock2.h>
-   ```
-
-3. **链接库不同**
-   - Windows 需要链接 `ws2_32.lib`
-
-### Windows 解决方案
-
-#### 方案 1：使用 WSL（推荐）
-
-```bash
-# 在 Windows 上安装 WSL
-wsl --install
-
-# 在 WSL 中编译运行
-cd /mnt/c/path/to/flight_system
-make
-./server
-```
-
-#### 方案 2：使用虚拟机
-
-- VirtualBox（免费）
-- VMware（付费）
-- 安装 Ubuntu 虚拟机
-
-#### 方案 3：修改代码支持 Windows
-
-需要添加条件编译：
-
-```cpp
-#ifdef _WIN32
-    #include <winsock2.h>
-    #pragma comment(lib, "ws2_32.lib")
-    
-    // 初始化 Winsock
-    WSADATA wsaData;
-    WSAStartup(MAKEWORD(2, 2), &wsaData);
-#else
-    #include <sys/socket.h>
-    #include <arpa/inet.h>
-#endif
-```
+**防火墙**：Windows 第一次运行 `server.exe`/`client.exe` 时会弹出防火墙提示，请允许“专用网络”；macOS 可能询问是否允许接收传入连接，请选允许。所有电脑需连在同一网络（校园网有客户端隔离时可用手机热点）。
 
 ---
 
 ## 常见问题
 
-### Q1: 编译报错 "command not found: make"
+**Q: 客户端一直提示 `No reply from server`？**
+检查服务器是否在运行、`--server` 的 IP 和 `--port` 是否正确、防火墙是否放行 UDP 端口。
 
-**解决方案**：
-```bash
-# macOS
-xcode-select --install
+**Q: 为什么 at-least-once 下座位数不对？**
+这正是实验要展示的现象：回复丢失后客户端重传，服务器不过滤重复请求，于是同一个预订被执行了多次。改用 at-most-once 即可。
 
-# Linux (Ubuntu/Debian)
-sudo apt-get install build-essential
+**Q: 丢失率设了但看不出效果？**
+丢失是随机的。提高丢失率（如 0.5）、增加操作次数，或固定 `--seed` 复现同一组丢包。
 
-# Linux (CentOS/RHEL)
-sudo yum install gcc-c++ make
-```
-
----
-
-### Q2: 运行测试提示 "Tests not found"
-
-**原因**：未编译测试程序
-
-**解决方案**：
-```bash
-# 先编译测试
-make test
-
-# 再运行
-./tests
-```
-
----
-
-### Q3: 链接错误 "library not found for -lgtest"
-
-**原因**：Google Test 未安装
-
-**解决方案**：
-```bash
-# macOS
-brew install googletest
-
-# 或手动安装
-# 参考"测试指南"部分
-```
-
----
-
-### Q4: 客户端连接服务器失败
-
-**可能原因**：
-1. 服务器未启动
-2. 端口被占用
-3. 防火墙阻止
-
-**解决方案**：
-```bash
-# 1. 检查服务器是否运行
-ps aux | grep server
-
-# 2. 检查端口是否被占用
-lsof -i :8080
-
-# 3. 更换端口
-./server --port=9090
-./client --port=9090
-```
-
----
-
-### Q5: 消息丢失率设置后没有效果
-
-**原因**：丢失率是概率性的，少量消息可能看不出效果
-
-**解决方案**：
-```bash
-# 提高丢失率到 50% 或更高
-./server --loss-rate=0.5
-./client --loss-rate=0.5
-
-# 多次测试观察结果
-```
-
----
-
-### Q6: At-Least-Once 语义下仍然失败
-
-**可能原因**：
-1. 客户端和服务器没有同时开启
-2. 重试次数用尽（最多 3 次）
-
-**解决方案**：
-```bash
-# 确保两端都开启
-./server --at-least-once
-./client --at-least-once
-
-# 检查日志看是否有重试
-```
-
----
-
-### Q7: Windows 上无法编译
-
-**原因**：当前版本不支持 Windows
-
-**解决方案**：
-1. 使用 WSL（推荐）
-2. 使用虚拟机
-3. 在 macOS/Linux 上运行
+**Q: 编译报错 `make: command not found`？**
+macOS: `xcode-select --install`；Ubuntu: `sudo apt-get install build-essential`；Windows: 安装 MSYS2 后执行 `pacman -S mingw-w64-ucrt-x86_64-gcc make`。
 
 ---
 
 ## 项目结构
 
 ```
-flight_system/
-├── docs/                    # 文档
-│   ├── SPEC_Requirements.md # 需求规格说明书
-│   ├── SPEC_Architecture.md # 系统架构设计
-│   └── DEV_Log.md          # 开发日志
-├── include/                 # 头文件
-│   ├── common/             # 公共模块
-│   ├── client/             # 客户端模块
-│   └── server/             # 服务器模块
-├── src/                     # 源代码
-│   ├── common/
-│   ├── client/
-│   └── server/
-├── tests/                   # 测试代码
-│   ├── test_main.cpp
-│   ├── test_message_serializer.cpp
-│   ├── test_flight_manager.cpp
-│   └── README.md
-├── tools/                   # 工具脚本
-│   ├── build.sh
-│   ├── clean.sh
-│   ├── install_gtest.sh
-│   ├── run_tests.sh
-│   └── test_semantics.sh
-├── Makefile                # Make 构建文件
-├── CMakeLists.txt          # CMake 构建文件
-└── README.md               # 项目说明
+├── docs/                      # 需求、架构文档和开发日志
+├── include/
+│   ├── common/                # 公共模块：消息类型、编组、UDP socket、平台适配、日志
+│   ├── client/                # 客户端：FlightClient（请求/重传）、ClientUI（菜单）
+│   └── server/                # 服务器：FlightServer、FlightManager、MonitorManager、RequestHistory
+├── src/                       # 对应的实现
+├── tools/
+│   ├── test_semantics.sh      # 调用语义对比实验
+│   ├── build.sh / clean.sh    # CMake 构建 / 清理
+│   ├── run_tests.sh           # 运行单元测试
+│   └── install_gtest.sh       # 安装 Google Test（macOS）
+├── Makefile
+└── CMakeLists.txt
 ```
-
----
 
 ## 技术文档
 
 - [需求规格说明书](docs/SPEC_Requirements.md)
 - [系统架构设计](docs/SPEC_Architecture.md)
 - [开发日志](docs/DEV_Log.md)
-- [测试文档](tests/README.md)
-
----
-
-## 开发团队
-
-分布式系统课程大作业
-
----
-
-## 许可证
-
-仅供课程学习使用
