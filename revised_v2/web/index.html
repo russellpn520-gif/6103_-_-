@@ -3,513 +3,1290 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Flight Booking – UDP client</title>
+<title>SC6103 Flights – UDP client</title>
 <style>
   :root {
-    --bg: #f3f5f8; --card: #ffffff; --ink: #1c2430; --muted: #6b7684; --line: #dde3ea;
-    --accent: #1f6feb; --accent-ink: #ffffff; --ok: #1a7f37; --warn: #9a6700; --err: #c7372f;
-    --send: #1f6feb; --recv: #1a7f37; --drop: #c7372f; --mono: ui-monospace, Menlo, Consolas, monospace;
+    --bg: #f4f6fa;
+    --bg-tint: #e9f0fb;
+    --card: #ffffff;
+    --ink: #1d2533;
+    --ink-2: #5b6576;
+    --ink-3: #8a93a3;
+    --line: #e2e7ef;
+    --accent: #2563eb;
+    --accent-ink: #ffffff;
+    --accent-soft: #e8efff;
+    --ok: #15803d;
+    --ok-soft: #ecfdf3;
+    --warn: #a16207;
+    --warn-soft: #fff8e6;
+    --err: #c2410c;
+    --err-soft: #fff1ec;
+    --glass: rgba(255, 255, 255, 0.72);
+    --glass-line: rgba(255, 255, 255, 0.65);
+    --shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 8px 24px rgba(16, 24, 40, 0.06);
+    --radius-l: 22px;
+    --radius-m: 16px;
+    --radius-s: 12px;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", Roboto, sans-serif;
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-  header { background: #0f1d33; color: #fff; padding: 10px 20px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
-  header h1 { font-size: 18px; margin: 0; font-weight: 600; }
-  header .badge { font-family: var(--mono); font-size: 12px; background: rgba(255,255,255,.12); padding: 4px 8px; border-radius: 6px; }
-  header .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: #8b949e; margin-right: 6px; }
-  header .dot.on { background: #3fb950; } header .dot.off { background: #f85149; }
-  header .spacer { flex: 1; }
-  main { display: grid; grid-template-columns: minmax(380px, 5fr) minmax(420px, 6fr); gap: 16px; padding: 16px 20px; max-width: 1600px; margin: 0 auto; }
-  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
-  .col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
-  .card h2 { font-size: 14px; margin: 0 0 10px; display: flex; align-items: center; gap: 8px; }
-  .card h2 .tag { font-size: 11px; font-weight: 500; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px; }
-  .row { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; }
-  label { display: flex; flex-direction: column; font-size: 12px; color: var(--muted); gap: 3px; }
-  input, select { font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; min-width: 90px; background: #fff; color: var(--ink); }
-  input[type=number] { width: 110px; }
-  button { font: inherit; padding: 7px 12px; border-radius: 6px; border: 1px solid var(--accent); background: var(--accent); color: var(--accent-ink); cursor: pointer; }
-  button.secondary { background: #fff; color: var(--accent); }
-  button.small { padding: 3px 8px; font-size: 12px; }
-  button:disabled { opacity: .5; cursor: default; }
-  .result { margin-top: 10px; padding: 8px 10px; border-radius: 6px; background: #f6f8fa; border-left: 4px solid var(--line); white-space: pre-wrap; }
-  .result.ok { border-left-color: var(--ok); } .result.err { border-left-color: var(--err); } .result.warn { border-left-color: var(--warn); background: #fff8e6; }
-  .result .meta { color: var(--muted); font-size: 12px; margin-top: 4px; font-family: var(--mono); }
-  table { border-collapse: collapse; width: 100%; margin-top: 8px; }
-  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); font-size: 13px; }
-  th { color: var(--muted); font-weight: 500; }
-  .feed { max-height: 260px; overflow: auto; }
-  .feed .item { padding: 8px 10px; border-left: 4px solid var(--ok); background: #f0fff4; border-radius: 6px; margin-bottom: 6px; }
-  .feed .item time, .wire time { color: var(--muted); font-family: var(--mono); font-size: 12px; margin-right: 8px; }
-  .monitors { margin-top: 8px; font-size: 13px; }
-  .monitors .m { display: inline-block; background: #eef4ff; border: 1px solid #c9dbff; border-radius: 999px; padding: 2px 10px; margin: 2px 6px 2px 0; }
-  .wire { max-height: 560px; overflow: auto; font-size: 13px; }
-  .wire .e { border-bottom: 1px solid var(--line); padding: 6px 2px; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; font: 15px/1.5 var(--font); color: var(--ink);
+    background: radial-gradient(1200px 500px at 10% -10%, var(--bg-tint), transparent 60%),
+                radial-gradient(900px 400px at 100% 0%, #eef3fb, transparent 60%), var(--bg);
+    min-height: 100vh;
+  }
+  body.lab-open { padding-bottom: 46vh; }
+  button, input, select { font: inherit; color: inherit; }
+  :focus-visible { outline: 3px solid rgba(37, 99, 235, 0.45); outline-offset: 2px; border-radius: 8px; }
+  svg.i { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+
+  /* ---------- glass surfaces (with a solid fallback) ---------- */
+  .glass { background: var(--glass); border: 1px solid var(--glass-line); backdrop-filter: saturate(180%) blur(20px); -webkit-backdrop-filter: saturate(180%) blur(20px); }
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .glass { background: #fbfcfe; border-color: var(--line); }
+  }
+
+  /* ---------- top navigation ---------- */
+  .nav { position: sticky; top: 0; z-index: 30; border-width: 0 0 1px; border-bottom-color: rgba(226, 231, 239, 0.8); }
+  .nav-inner { max-width: 1200px; margin: 0 auto; padding: 10px 20px; display: flex; align-items: center; gap: 18px; }
+  .brand { display: flex; align-items: center; gap: 8px; font-weight: 650; font-size: 17px; letter-spacing: -0.01em; }
+  .brand .logo { width: 30px; height: 30px; border-radius: 9px; background: linear-gradient(135deg, #3b82f6, #2563eb); color: #fff; display: grid; place-items: center; }
+  .brand .logo svg { width: 17px; height: 17px; stroke-width: 2; }
+  .nav-links { display: flex; gap: 4px; margin-left: 10px; }
+  .nav-link { background: none; border: 0; padding: 7px 12px; border-radius: 10px; color: var(--ink-2); cursor: pointer; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .nav-link:hover { background: rgba(15, 23, 42, 0.05); color: var(--ink); }
+  .nav-link.on { color: var(--accent); background: var(--accent-soft); }
+  .nav .spacer { flex: 1; }
+  .conn { display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--ink-2); }
+  .conn .dot { width: 8px; height: 8px; border-radius: 50%; background: #a3abb8; }
+  .conn .dot.on { background: #22c55e; box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.15); }
+  .conn .dot.off { background: #ef4444; }
+  .chip { font-family: var(--mono); font-size: 12px; color: var(--ink-2); background: rgba(15, 23, 42, 0.05); border-radius: 999px; padding: 3px 9px; white-space: nowrap; }
+  .lang-btn { border: 1px solid var(--line); background: #fff; border-radius: 10px; padding: 6px 10px; cursor: pointer; display: flex; gap: 6px; align-items: center; font-size: 13px; }
+  .lang-btn:hover { border-color: #cbd3df; }
+
+  /* ---------- page ---------- */
+  .page { max-width: 1200px; margin: 0 auto; padding: 26px 20px 40px; }
+  .hero h1 { margin: 0; font-size: 30px; letter-spacing: -0.02em; font-weight: 680; }
+  .hero p { margin: 6px 0 0; color: var(--ink-2); max-width: 760px; }
+
+  /* ---------- search panel ---------- */
+  .search { margin-top: 18px; padding: 18px; border-radius: var(--radius-l); box-shadow: var(--shadow); }
+  .search form { display: grid; grid-template-columns: 1fr auto 1fr 150px auto; gap: 10px; align-items: end; }
+  .field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+  .field label { font-size: 12.5px; color: var(--ink-2); font-weight: 550; padding-left: 2px; }
+  .field input, .field select { height: 48px; border: 1px solid var(--line); border-radius: var(--radius-s); background: #fff; padding: 0 14px; font-size: 16px; width: 100%; }
+  .field input:focus, .field select:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.14); }
+  .swap { height: 48px; width: 48px; border-radius: 50%; border: 1px solid var(--line); background: #fff; cursor: pointer; display: grid; place-items: center; color: var(--ink-2); }
+  .swap:hover { color: var(--accent); border-color: #c6d4ee; }
+  .stepper { display: flex; height: 48px; border: 1px solid var(--line); border-radius: var(--radius-s); background: #fff; overflow: hidden; }
+  .stepper button { width: 40px; border: 0; background: none; cursor: pointer; font-size: 18px; color: var(--ink-2); }
+  .stepper button:hover { background: rgba(15, 23, 42, 0.04); color: var(--ink); }
+  .stepper input { border: 0; width: 100%; text-align: center; font-size: 16px; -moz-appearance: textfield; min-width: 0; }
+  .stepper input::-webkit-outer-spin-button, .stepper input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .btn { height: 48px; padding: 0 22px; border-radius: var(--radius-s); border: 1px solid transparent; background: var(--accent); color: var(--accent-ink); font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap; }
+  .btn:hover { background: #1d4ed8; }
+  .btn:disabled { opacity: 0.55; cursor: default; }
+  .btn.sm { height: 36px; padding: 0 14px; font-size: 14px; border-radius: 10px; }
+  .btn.ghost { background: #fff; color: var(--accent); border-color: #cddbf5; }
+  .btn.ghost:hover { background: var(--accent-soft); }
+  .btn.quiet { background: transparent; color: var(--ink-2); border-color: var(--line); }
+  .btn.quiet:hover { color: var(--ink); background: #fff; }
+  .search .hint { margin: 10px 2px 0; font-size: 12.5px; color: var(--ink-3); }
+  .search .msg { margin: 10px 2px 0; font-size: 14px; color: var(--err); }
+
+  /* ---------- main grid ---------- */
+  .grid { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 22px; margin-top: 22px; align-items: start; }
+  .side { display: flex; flex-direction: column; gap: 16px; position: sticky; top: 76px; }
+  .section-title { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin: 2px 2px 12px; }
+  .section-title h2 { font-size: 18px; margin: 0; letter-spacing: -0.01em; }
+  .section-title .sub { color: var(--ink-3); font-size: 13px; }
+
+  /* ---------- flight cards ---------- */
+  .results { display: flex; flex-direction: column; gap: 12px; }
+  .empty { padding: 34px 20px; text-align: center; color: var(--ink-3); background: rgba(255, 255, 255, 0.6); border: 1px dashed #d6dde8; border-radius: var(--radius-m); }
+  .empty.err { color: var(--err); border-color: #f3c7b5; background: var(--err-soft); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius-m); box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04); padding: 16px 18px; }
+  .card.enter { animation: rise 0.22s ease-out; }
+  .card.sel { border-color: #9dbcf5; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12); }
+  .card .top { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto; gap: 16px; align-items: center; }
+  .when .time { font-size: 28px; font-weight: 680; letter-spacing: -0.02em; line-height: 1.1; }
+  .when .date { font-size: 13px; color: var(--ink-2); margin-top: 2px; }
+  .route { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 16px; margin-top: 6px; flex-wrap: wrap; }
+  .route svg { color: var(--ink-3); width: 16px; height: 16px; }
+  .fare .lbl { font-size: 12px; color: var(--ink-3); }
+  .fare .amt { font-size: 22px; font-weight: 680; letter-spacing: -0.01em; }
+  .seats { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; margin-top: 4px; color: var(--ok); }
+  .seats.low { color: var(--warn); }
+  .seats.none { color: var(--err); }
+  .actions { display: flex; flex-direction: column; gap: 8px; align-items: stretch; }
+  .card .meta-row { display: flex; align-items: center; gap: 10px; margin-top: 12px; padding-top: 10px; border-top: 1px solid #eef1f6; font-size: 13px; color: var(--ink-3); flex-wrap: wrap; }
+  .linkbtn { background: none; border: 0; padding: 2px 4px; color: var(--accent); cursor: pointer; font-size: 13px; border-radius: 6px; display: inline-flex; align-items: center; gap: 4px; }
+  .linkbtn:hover { background: var(--accent-soft); }
+  .details { margin-top: 10px; display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; font-size: 13.5px; background: #f8fafc; border-radius: 10px; padding: 10px 12px; }
+  .details dt { color: var(--ink-3); }
+  .details dd { margin: 0; }
+  .card.loading .skel { height: 14px; background: linear-gradient(90deg, #eef1f6, #f7f9fc, #eef1f6); background-size: 200% 100%; border-radius: 6px; animation: shimmer 1.2s infinite; }
+  .tag { font-size: 11.5px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--ink-2); }
+
+  /* ---------- side panels ---------- */
+  .panel { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius-l); box-shadow: var(--shadow); padding: 18px; }
+  .panel.booking { border-color: #d7e2f7; }
+  .panel h3 { margin: 0 0 12px; font-size: 16px; display: flex; align-items: center; gap: 8px; }
+  .panel h3 .x { margin-left: auto; }
+  .panel .muted { color: var(--ink-3); font-size: 13.5px; }
+  .sum { background: #f8fafc; border-radius: 14px; padding: 12px 14px; }
+  .sum .r1 { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+  .sum .r1 b { font-size: 17px; }
+  .sum .r2 { font-size: 13px; color: var(--ink-2); margin-top: 2px; }
+  .rows { margin: 14px 0; display: grid; gap: 8px; }
+  .rows .row { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 14px; }
+  .rows .row.total { border-top: 1px solid var(--line); padding-top: 10px; font-weight: 650; font-size: 16px; }
+  .rows .stepper { height: 38px; width: 130px; }
+  .rows .stepper button { width: 34px; }
+  .note { font-size: 12.5px; color: var(--ink-3); margin-top: 8px; }
+  .alert { border-radius: 12px; padding: 10px 12px; font-size: 13.5px; margin-top: 12px; display: flex; gap: 8px; align-items: flex-start; }
+  .alert.ok { background: var(--ok-soft); color: #14532d; }
+  .alert.err { background: var(--err-soft); color: #7c2d12; }
+  .alert.warn { background: var(--warn-soft); color: #713f12; }
+  .alert svg { margin-top: 1px; }
+  .alert .meta { display: block; font-family: var(--mono); font-size: 11.5px; opacity: 0.75; margin-top: 3px; }
+  .divider { height: 1px; background: var(--line); margin: 16px 0; }
+  .inline { display: flex; gap: 8px; align-items: center; }
+  .inline input[type=number] { width: 76px; height: 36px; border: 1px solid var(--line); border-radius: 10px; padding: 0 10px; }
+  .w-head { display: flex; align-items: center; gap: 8px; }
+  .w-head select { height: 32px; border: 1px solid var(--line); border-radius: 9px; padding: 0 8px; background: #fff; margin-left: auto; font-size: 13px; }
+  .watch { border: 1px solid var(--line); border-radius: 14px; padding: 11px 12px; margin-top: 10px; }
+  .watch.ended { background: #fafbfc; }
+  .watch .wh { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .watch .wh b { font-size: 14.5px; }
+  .watch .cd { font-size: 12.5px; color: var(--accent); font-variant-numeric: tabular-nums; }
+  .watch.ended .cd { color: var(--ink-3); }
+  .watch .ws { font-size: 13.5px; margin-top: 4px; display: flex; justify-content: space-between; align-items: center; }
+  .watch ul { list-style: none; margin: 8px 0 0; padding: 0; font-size: 12.5px; color: var(--ink-2); max-height: 120px; overflow: auto; }
+  .watch li { padding: 3px 0; border-top: 1px dashed #edf0f5; display: flex; gap: 8px; }
+  .watch li time { font-family: var(--mono); color: var(--ink-3); }
+  .acts { list-style: none; margin: 0; padding: 0; font-size: 13px; max-height: 220px; overflow: auto; }
+  .acts li { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; padding: 7px 0; border-top: 1px solid #f0f2f6; align-items: baseline; }
+  .acts li:first-child { border-top: 0; }
+  .acts time { font-family: var(--mono); font-size: 11.5px; color: var(--ink-3); }
+  .badge { font-size: 11.5px; padding: 1px 8px; border-radius: 999px; white-space: nowrap; }
+  .badge.ok { background: var(--ok-soft); color: var(--ok); }
+  .badge.err { background: var(--err-soft); color: var(--err); }
+  .badge.unknown { background: var(--warn-soft); color: var(--warn); }
+
+  /* ---------- toasts ---------- */
+  .toasts { position: fixed; top: 70px; right: 18px; z-index: 50; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+  .toast { pointer-events: auto; padding: 10px 14px; border-radius: 14px; box-shadow: 0 10px 30px rgba(16, 24, 40, 0.14); font-size: 14px; display: flex; gap: 8px; align-items: center; max-width: 340px; animation: slidein 0.22s ease-out; }
+  .toast svg { color: var(--accent); }
+
+  /* ---------- lab console (bottom dock) ---------- */
+  .lab { position: fixed; left: 0; right: 0; bottom: 0; height: 46vh; z-index: 40; display: none; flex-direction: column; border-width: 1px 0 0; border-top-color: #d9e0ea; box-shadow: 0 -10px 30px rgba(16, 24, 40, 0.08); }
+  body.lab-open .lab { display: flex; }
+  .lab-head { display: flex; align-items: center; gap: 12px; padding: 10px 20px; border-bottom: 1px solid rgba(217, 224, 234, 0.8); }
+  .lab-head h2 { font-size: 15px; margin: 0; display: flex; gap: 8px; align-items: center; }
+  .lab-head .sub { font-size: 12.5px; color: var(--ink-3); }
+  .lab-head .x { margin-left: auto; }
+  .lab-body { flex: 1; display: grid; grid-template-columns: minmax(330px, 420px) minmax(0, 1fr); min-height: 0; }
+  .lab-col { overflow: auto; padding: 14px 20px; min-height: 0; }
+  .lab-col + .lab-col { border-left: 1px solid rgba(217, 224, 234, 0.8); background: rgba(255, 255, 255, 0.55); }
+  .lab h4 { margin: 4px 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-2); }
+  .kv { display: grid; grid-template-columns: max-content 1fr; gap: 3px 12px; font-size: 13px; margin-bottom: 14px; }
+  .kv dt { color: var(--ink-3); }
+  .kv dd { margin: 0; font-family: var(--mono); }
+  .lab form.settings { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 6px; }
+  .lab form.settings .full { grid-column: 1 / -1; }
+  .lab label.s { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--ink-2); }
+  .lab label.s input, .lab label.s select { height: 34px; border: 1px solid var(--line); border-radius: 9px; padding: 0 9px; background: #fff; font-size: 13.5px; }
+  .lab .small { font-size: 12px; color: var(--ink-3); margin: 4px 0 12px; }
+  .raw { border: 1px solid var(--line); border-radius: 12px; padding: 9px 10px; margin-bottom: 8px; background: #fff; }
+  .raw form { display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-end; }
+  .raw .rt { font-size: 13px; font-weight: 600; width: 100%; display: flex; gap: 6px; align-items: center; }
+  .raw input { height: 32px; border: 1px solid var(--line); border-radius: 8px; padding: 0 8px; width: 104px; font-size: 13px; }
+  .raw .res { font-size: 12.5px; margin-top: 6px; white-space: pre-wrap; }
+  .raw .res.ok { color: var(--ok); } .raw .res.err { color: var(--err); } .raw .res.warn { color: var(--warn); }
+  .wire-tools { display: flex; gap: 12px; align-items: center; font-size: 12.5px; color: var(--ink-2); margin-bottom: 6px; flex-wrap: wrap; }
+  .wire-tools label { display: flex; gap: 4px; align-items: center; }
+  .legend { font-size: 12px; color: var(--ink-3); margin-bottom: 6px; }
+  .legend b, .wire .hex b { font-family: var(--mono); color: #fff; background: #5b6576; border-radius: 3px; padding: 0 3px; font-weight: 500; }
+  .wire { font-size: 12.5px; }
+  .wire .e { border-bottom: 1px solid #edf0f5; padding: 5px 0; }
   .wire .head { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
-  .wire .arrow { font-family: var(--mono); font-weight: 700; width: 18px; display: inline-block; }
-  .wire .send .arrow { color: var(--send); } .wire .recv .arrow { color: var(--recv); } .wire .drop .arrow { color: var(--drop); }
+  .wire time { font-family: var(--mono); color: var(--ink-3); font-size: 11.5px; }
+  .wire .arrow { font-family: var(--mono); font-weight: 700; width: 14px; display: inline-block; }
+  .wire .send .arrow { color: var(--accent); } .wire .recv .arrow { color: var(--ok); } .wire .drop .arrow { color: var(--err); }
   .wire .type { font-family: var(--mono); font-weight: 600; }
-  .wire .note { color: var(--muted); }
+  .wire .note { color: var(--ink-3); }
   .wire .note.hot { color: var(--warn); font-weight: 600; }
   .wire .note.bad { color: var(--err); font-weight: 600; }
-  .wire .hex { font-family: var(--mono); font-size: 12px; color: #30363d; margin-top: 3px; word-break: break-all; line-height: 1.6; }
-  .wire .hex b { color: #fff; background: #57606a; border-radius: 3px; padding: 0 3px; font-weight: 500; }
-  .wire .log { color: var(--muted); font-style: italic; }
+  .wire .hex { font-family: var(--mono); font-size: 11.5px; color: #334155; margin-top: 2px; word-break: break-all; line-height: 1.7; }
+  .wire.nohex .hex { display: none; }
+  .wire .log { color: var(--ink-3); font-style: italic; }
   .wire .log.WARN { color: var(--warn); font-style: normal; } .wire .log.ERROR { color: var(--err); font-style: normal; }
-  .toolbar { display: flex; gap: 10px; align-items: center; margin-left: auto; font-size: 12px; color: var(--muted); }
-  .hint { color: var(--muted); font-size: 12px; margin-top: 6px; }
-  .legend { font-size: 12px; color: var(--muted); margin-top: 6px; }
-  .legend b { font-family: var(--mono); color: #fff; background: #57606a; border-radius: 3px; padding: 0 3px; font-weight: 500; }
+
+  footer { text-align: center; color: var(--ink-3); font-size: 12.5px; padding: 10px 20px 30px; }
+
+  @keyframes rise { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+  @keyframes slidein { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: none; } }
+  @keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+  }
+
+  /* ---------- narrow screens ---------- */
+  @media (max-width: 980px) {
+    .grid { grid-template-columns: 1fr; }
+    .side { position: static; }
+    .lab-body { grid-template-columns: 1fr; overflow: auto; }
+    .lab-col { overflow: visible; }
+    .lab-col + .lab-col { border-left: 0; border-top: 1px solid var(--line); }
+  }
+  @media (max-width: 760px) {
+    .nav-inner { flex-wrap: wrap; gap: 10px; }
+    .nav-links { order: 3; width: 100%; margin: 0; overflow-x: auto; }
+    .conn .chip { display: none; }
+    .hero h1 { font-size: 24px; }
+    .search form { grid-template-columns: 1fr auto; }
+    .search form .f-from, .search form .f-to { grid-column: 1 / 2; }
+    .search form .swap { grid-row: 1 / 3; grid-column: 2; align-self: center; }
+    .search form .f-pax { grid-column: 1 / 2; }
+    .search form .btn { grid-column: 1 / -1; }
+    .card .top { grid-template-columns: 1fr auto; }
+    .card .actions { grid-column: 1 / -1; flex-direction: row; }
+    .card .actions .btn { flex: 1; }
+    body.lab-open { padding-bottom: 72vh; }
+    .lab { height: 72vh; }
+    .toasts { left: 12px; right: 12px; top: auto; bottom: 16px; }
+  }
 </style>
 </head>
 <body>
-<header>
-  <h1>✈ Flight Booking</h1>
-  <span class="badge" id="badge-client">client: connecting…</span>
-  <span class="badge" id="badge-server">server: –</span>
-  <span class="badge" id="badge-sem">semantics: –</span>
-  <span class="spacer"></span>
-  <span><span class="dot" id="dot"></span><span id="conn">connecting</span></span>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-plane" viewBox="0 0 24 24"><path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/></symbol>
+  <symbol id="i-swap" viewBox="0 0 24 24"><path d="M7 4 3 8l4 4"/><path d="M3 8h14"/><path d="m17 20 4-4-4-4"/><path d="M21 16H7"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></symbol>
+  <symbol id="i-lab" viewBox="0 0 24 24"><path d="M9 3h6"/><path d="M10 3v6L4.5 18.5A2 2 0 0 0 6.2 21.5h11.6a2 2 0 0 0 1.7-3L14 9V3"/><path d="M7 15h10"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16"/><path d="M3 21v-5h5"/><path d="M3 12a9 9 0 0 1 15.5-6.2L21 8"/><path d="M21 3v5h-5"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></symbol>
+  <symbol id="i-seat" viewBox="0 0 24 24"><path d="M7 4v9a2 2 0 0 0 2 2h7"/><path d="M5 20h14"/><path d="M16 15l2 5"/><path d="M7 9h6"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></symbol>
+</svg>
+
+<header class="nav glass">
+  <div class="nav-inner">
+    <div class="brand"><span class="logo"><svg class="i"><use href="#i-plane"/></svg></span>SC6103 Flights</div>
+    <nav class="nav-links" aria-label="Sections">
+      <button class="nav-link" type="button" data-go="search-sec"><svg class="i"><use href="#i-search"/></svg><span data-i18n="nav.find"></span></button>
+      <button class="nav-link" type="button" data-go="alerts-sec"><svg class="i"><use href="#i-bell"/></svg><span data-i18n="nav.alerts"></span></button>
+      <button class="nav-link" type="button" id="lab-toggle" aria-expanded="false"><svg class="i"><use href="#i-lab"/></svg><span data-i18n="nav.lab"></span></button>
+    </nav>
+    <span class="spacer"></span>
+    <span class="conn"><span class="dot" id="dot"></span><span id="conn-text"></span><span class="chip" id="conn-chip">UDP –</span></span>
+    <button class="lang-btn" type="button" id="lang-btn" aria-label="Language / 语言"><svg class="i"><use href="#i-globe"/></svg><span id="lang-label"></span></button>
+  </div>
 </header>
 
-<main>
-  <section class="col">
+<main class="page">
+  <section class="hero">
+    <h1 data-i18n="hero.title"></h1>
+    <p data-i18n="hero.sub"></p>
+  </section>
 
-    <div class="card">
-      <h2>Settings <span class="tag">this tab’s UDP client</span></h2>
-      <form id="f-settings" class="row">
-        <label>Invocation semantics
+  <section class="search glass" id="search-sec" aria-labelledby="search-h">
+    <h2 id="search-h" style="position:absolute;left:-9999px" data-i18n="nav.find"></h2>
+    <form id="f-search" autocomplete="off">
+      <div class="field f-from">
+        <label for="from" data-i18n="search.from"></label>
+        <input id="from" list="cities" required data-i18n-ph="search.phFrom">
+      </div>
+      <button class="swap" type="button" id="swap" data-i18n-title="search.swap"><svg class="i"><use href="#i-swap"/></svg></button>
+      <div class="field f-to">
+        <label for="to" data-i18n="search.to"></label>
+        <input id="to" list="cities" required data-i18n-ph="search.phTo">
+      </div>
+      <div class="field f-pax">
+        <label for="pax" data-i18n="search.pax"></label>
+        <div class="stepper"><button type="button" data-step="-1" data-for="pax" aria-label="−">−</button><input id="pax" type="number" min="1" max="99" value="1" inputmode="numeric"><button type="button" data-step="1" data-for="pax" aria-label="+">+</button></div>
+      </div>
+      <button class="btn" type="submit" id="search-btn"><svg class="i"><use href="#i-search"/></svg><span data-i18n="search.go"></span></button>
+    </form>
+    <datalist id="cities"></datalist>
+    <div class="msg" id="search-msg" hidden></div>
+    <div class="hint" data-i18n="search.hint"></div>
+  </section>
+
+  <div class="grid">
+    <section aria-live="polite">
+      <div class="section-title"><h2 data-i18n="results.title"></h2><span class="sub" id="results-sub"></span></div>
+      <div class="results" id="results"></div>
+    </section>
+
+    <aside class="side">
+      <section class="panel booking" id="booking" aria-live="polite"></section>
+      <section class="panel" id="alerts-sec">
+        <h3 class="w-head"><svg class="i"><use href="#i-bell"/></svg><span data-i18n="alerts.title"></span>
+          <select id="watch-dur" aria-label="duration">
+            <option value="30">30 s</option><option value="60" selected>60 s</option><option value="120">2 min</option><option value="300">5 min</option><option value="600">10 min</option>
+          </select>
+        </h3>
+        <div class="muted" id="watch-dur-label"></div>
+        <div id="watches"></div>
+        <div class="note" data-i18n="alerts.note"></div>
+      </section>
+      <section class="panel">
+        <h3><svg class="i"><use href="#i-list"/></svg><span data-i18n="activity.title"></span></h3>
+        <ul class="acts" id="acts"></ul>
+        <div class="note" data-i18n="activity.note"></div>
+      </section>
+    </aside>
+  </div>
+</main>
+
+<footer data-i18n="footer"></footer>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<!-- ======================= Lab console ======================= -->
+<section class="lab glass" id="lab" aria-label="Lab console">
+  <div class="lab-head">
+    <h2><svg class="i"><use href="#i-lab"/></svg><span data-i18n="lab.title"></span></h2>
+    <span class="sub" data-i18n="lab.sub"></span>
+    <button class="btn sm quiet x" type="button" id="lab-close"><svg class="i"><use href="#i-x"/></svg><span data-i18n="lab.close"></span></button>
+  </div>
+  <div class="lab-body">
+    <div class="lab-col">
+      <h4 data-i18n="lab.conn"></h4>
+      <dl class="kv">
+        <dt data-i18n="lab.port"></dt><dd id="lab-port">–</dd>
+        <dt data-i18n="lab.server"></dt><dd id="lab-server">–</dd>
+        <dt data-i18n="lab.semantics"></dt><dd id="lab-sem">–</dd>
+      </dl>
+
+      <h4 data-i18n="lab.settings"></h4>
+      <form class="settings" id="f-settings">
+        <label class="s full"><span data-i18n="lab.semantics"></span>
           <select name="semantics">
-            <option value="at-most-once">at-most-once (retransmit, server filters duplicates)</option>
-            <option value="at-least-once">at-least-once (retransmit, server re-executes)</option>
-            <option value="maybe">maybe (send once, no retransmission)</option>
+            <option value="at-most-once" data-i18n="sem.amo"></option>
+            <option value="at-least-once" data-i18n="sem.alo"></option>
+            <option value="maybe" data-i18n="sem.maybe"></option>
           </select>
         </label>
-        <label>Timeout (ms)<input type="number" name="timeout_ms" min="100" max="10000" step="any"></label>
-        <label>Retries<input type="number" name="retries" min="0" max="20"></label>
-        <label>Request loss rate<input type="number" name="loss_rate" min="0" max="1" step="any"></label>
-        <button type="submit">Apply</button>
+        <label class="s"><span data-i18n="lab.timeout"></span><input type="number" name="timeout_ms" min="100" max="10000" step="any"></label>
+        <label class="s"><span data-i18n="lab.retries"></span><input type="number" name="retries" min="0" max="20"></label>
+        <label class="s"><span data-i18n="lab.loss"></span><input type="number" name="loss_rate" min="0" max="1" step="any"></label>
+        <label class="s" style="justify-content:flex-end"><button class="btn sm" type="submit" data-i18n="lab.apply"></button></label>
       </form>
-      <div class="hint">Start the server with the same <code>--semantics</code>. Timeout × (retries + 1) must stay ≤ 30 s because the server keeps reply history for 60 s.</div>
-      <div class="result" id="r-settings" hidden></div>
+      <div class="small" id="settings-res" data-i18n="lab.settingsHint"></div>
+
+      <h4 data-i18n="lab.raw"></h4>
+      <div class="small" data-i18n="lab.rawHint"></div>
+
+      <div class="raw"><form data-op="query_flights">
+        <div class="rt"><span data-i18n="raw.query"></span><span class="tag" data-i18n="tag.idem"></span></div>
+        <input name="source" data-i18n-ph="f.source" required><input name="destination" data-i18n-ph="f.dest" required>
+        <button class="btn sm ghost" type="submit" data-i18n="raw.send"></button>
+      </form><div class="res" hidden></div></div>
+
+      <div class="raw"><form data-op="get_flight_info">
+        <div class="rt"><span data-i18n="raw.info"></span><span class="tag" data-i18n="tag.idem"></span></div>
+        <input name="flight_id" type="number" data-i18n-ph="f.flight" required>
+        <button class="btn sm ghost" type="submit" data-i18n="raw.send"></button>
+      </form><div class="res" hidden></div></div>
+
+      <div class="raw"><form data-op="reserve_seats">
+        <div class="rt"><span data-i18n="raw.reserve"></span><span class="tag" data-i18n="tag.nonidem"></span></div>
+        <input name="flight_id" type="number" data-i18n-ph="f.flight" required><input name="seat_count" type="number" data-i18n-ph="f.seats" required>
+        <button class="btn sm ghost" type="submit" data-i18n="raw.send"></button>
+      </form><div class="res" hidden></div></div>
+
+      <div class="raw"><form data-op="register_monitor">
+        <div class="rt"><span data-i18n="raw.monitor"></span><span class="tag" data-i18n="tag.callback"></span></div>
+        <input name="flight_id" type="number" data-i18n-ph="f.flight" required><input name="interval_seconds" type="number" data-i18n-ph="f.interval" required>
+        <button class="btn sm ghost" type="submit" data-i18n="raw.send"></button>
+      </form><div class="res" hidden></div></div>
+
+      <div class="raw"><form data-op="get_seat_count">
+        <div class="rt"><span data-i18n="raw.seats"></span><span class="tag" data-i18n="tag.idem"></span></div>
+        <input name="flight_id" type="number" data-i18n-ph="f.flight" required>
+        <button class="btn sm ghost" type="submit" data-i18n="raw.send"></button>
+      </form><div class="res" hidden></div></div>
+
+      <div class="raw"><form data-op="cancel_reservation">
+        <div class="rt"><span data-i18n="raw.cancel"></span><span class="tag" data-i18n="tag.nonidem"></span></div>
+        <input name="flight_id" type="number" data-i18n-ph="f.flight" required><input name="seat_count" type="number" data-i18n-ph="f.seats" required>
+        <button class="btn sm ghost" type="submit" data-i18n="raw.send"></button>
+      </form><div class="res" hidden></div></div>
     </div>
 
-    <div class="card">
-      <h2>Search flights <span class="tag">service 1 · idempotent</span></h2>
-      <form id="f-query" class="row">
-        <label>From<input name="source" placeholder="Beijing" required></label>
-        <label>To<input name="destination" placeholder="Shanghai" required></label>
-        <button type="submit">Search</button>
-      </form>
-      <div class="result" id="r-query" hidden></div>
-      <div id="query-results"></div>
-    </div>
-
-    <div class="card">
-      <h2>Flight details <span class="tag">service 2 · idempotent</span></h2>
-      <form id="f-info" class="row">
-        <label>Flight ID<input type="number" name="flight_id" placeholder="1001" required></label>
-        <button type="submit">Show</button>
-      </form>
-      <div class="result" id="r-info" hidden></div>
-    </div>
-
-    <div class="card">
-      <h2>Book seats <span class="tag">service 3 · NON-idempotent</span></h2>
-      <form id="f-reserve" class="row">
-        <label>Flight ID<input type="number" name="flight_id" placeholder="1001" required></label>
-        <label>Seats<input type="number" name="seat_count" value="1" required></label>
-        <button type="submit">Reserve</button>
-      </form>
-      <div class="result" id="r-reserve" hidden></div>
-    </div>
-
-    <div class="card">
-      <h2>Cancel reservation <span class="tag">service 6 · NON-idempotent</span></h2>
-      <form id="f-cancel" class="row">
-        <label>Flight ID<input type="number" name="flight_id" placeholder="1001" required></label>
-        <label>Seats to return<input type="number" name="seat_count" value="1" required></label>
-        <button type="submit">Cancel seats</button>
-      </form>
-      <div class="result" id="r-cancel" hidden></div>
-    </div>
-
-    <div class="card">
-      <h2>Seat availability <span class="tag">service 5 · idempotent</span></h2>
-      <form id="f-seats" class="row">
-        <label>Flight ID<input type="number" name="flight_id" placeholder="1001" required></label>
-        <button type="submit">Check</button>
-      </form>
-      <div class="result" id="r-seats" hidden></div>
-    </div>
-
-    <div class="card">
-      <h2>Watch seat availability <span class="tag">service 4 · callback</span></h2>
-      <form id="f-monitor" class="row">
-        <label>Flight ID<input type="number" name="flight_id" placeholder="1001" required></label>
-        <label>Monitor interval (s)<input type="number" name="interval_seconds" value="60" min="1" max="3600" required></label>
-        <button type="submit">Start watching</button>
-      </form>
-      <div class="result" id="r-monitor" hidden></div>
-      <div class="monitors" id="monitors"></div>
-      <div class="hint">The server sends a callback to this client every time any client changes the seats of a watched flight, until the interval expires. This page keeps working while watching.</div>
-    </div>
-
-  </section>
-
-  <section class="col">
-
-    <div class="card">
-      <h2>Live seat updates <span class="tag">callbacks received</span>
-        <span class="toolbar"><button class="small secondary" type="button" id="clear-feed">Clear</button></span></h2>
-      <div class="feed" id="feed"><div class="hint placeholder">No callbacks yet. Watch a flight, then book seats on it from another client.</div></div>
-    </div>
-
-    <div class="card">
-      <h2>Wire log <span class="tag">UDP datagrams of this client</span>
-        <span class="toolbar">
-          <label style="flex-direction: row; align-items: center; gap: 4px"><input type="checkbox" id="show-hex" checked> bytes</label>
-          <label style="flex-direction: row; align-items: center; gap: 4px"><input type="checkbox" id="autoscroll" checked> auto-scroll</label>
-          <button class="small secondary" type="button" id="clear-wire">Clear</button>
-        </span></h2>
-      <div class="legend">Header = <b>type</b> <b>request id</b> <b>length</b> (3 × uint32, big-endian), then the body. Strings are uint32 length + UTF-8 bytes.</div>
+    <div class="lab-col">
+      <h4 data-i18n="lab.wire"></h4>
+      <div class="wire-tools">
+        <label><input type="checkbox" id="show-hex" checked><span data-i18n="lab.bytes"></span></label>
+        <label><input type="checkbox" id="autoscroll" checked><span data-i18n="lab.autoscroll"></span></label>
+        <button class="linkbtn" type="button" id="clear-wire" data-i18n="lab.clear"></button>
+      </div>
+      <div class="legend" id="legend"></div>
       <div class="wire" id="wire"></div>
     </div>
-
-  </section>
-</main>
+  </div>
+</section>
 
 <script>
 (function () {
   "use strict";
 
-  const $ = (id) => document.getElementById(id);
-  const TOKEN_KEY = "flight-bridge-token";   // sessionStorage: one token per tab
-  let token = null;
-  let state = null;
-  let es = null;
-  let monitorTimer = null;
-  let reconnectTimer = null;
-  let channel = null;                        // answers "is this token in use?" from other tabs
+  // ======================================================================
+  // Text in both languages. Protocol names and the wire log stay English so
+  // they match the source code.
+  // ======================================================================
+  const I18N = {
+    en: {
+      "nav.find": "Find flights", "nav.alerts": "Seat alerts", "nav.lab": "Lab console",
+      "conn.connecting": "Connecting…", "conn.on": "Connected", "conn.lost": "Connection lost – reconnecting",
+      "conn.restarted": "Bridge restarted – reconnecting", "conn.unreachable": "Cannot reach the bridge – retrying",
+      "hero.title": "Find and book a flight",
+      "hero.sub": "Live data from the flight server over UDP. Every request, retransmission and server callback can be inspected in the Lab console.",
+      "search.from": "From", "search.to": "To", "search.pax": "Passengers", "search.swap": "Swap cities",
+      "search.go": "Search", "search.phFrom": "e.g. Beijing", "search.phTo": "e.g. Shanghai",
+      "search.hint": "Suggestions list the cities in the server's test data. The search matches the departure and arrival city exactly.",
+      "search.empty": "Please enter both cities.", "search.same": "Departure and arrival cities must be different.",
+      "results.title": "Flights", "results.idle": "Search for a route to see flights and live seat availability.",
+      "results.searching": "Searching…", "results.count": "{n} flight(s) · {from} → {to}",
+      "results.none": "No flights from {from} to {to}.", "results.error": "Search failed: {msg}", "results.retry": "Retry",
+      "card.loading": "Loading details…", "card.unavailable": "Details unavailable: {msg}", "card.flight": "Flight {id}",
+      "card.fare": "Fare", "card.left": "{n} seats left", "card.soldOut": "Sold out", "card.fewer": "Fewer than {n} seats left",
+      "card.select": "Select", "card.selected": "Selected", "card.watch": "Watch availability", "card.watching": "Watching",
+      "card.details": "Details", "card.hide": "Hide details", "card.asOf": "Seats as of {time}", "card.refresh": "Refresh seats",
+      "card.departs": "Departure", "card.route": "Route", "card.seats": "Seats available", "card.number": "Flight number",
+      "book.title": "Booking", "book.empty": "Select a flight to book seats.", "book.pax": "Passengers",
+      "book.unit": "Fare per seat", "book.total": "Total", "book.noCurrency": "Fares are shown exactly as stored on the server; the data defines no currency.",
+      "book.confirm": "Confirm booking", "book.busy": "Booking…",
+      "book.ok": "Booked {n} seat(s) on flight {id}. The server reports {left} seats left.",
+      "book.insufficient": "Not enough seats: only {left} left.",
+      "unknown": "No reply from the server. The request may have been executed. Please do not resubmit right away – refresh the seat availability first.",
+      "book.close": "Close", "book.return": "Return seats",
+      "book.returnHint": "The server keeps no orders or accounts. This gives seats back to the flight (at most the number currently reserved on it).",
+      "book.returnBtn": "Return", "book.returnBusy": "Returning…", "book.returnOk": "Returned {n} seat(s). Seats available now: {left}.",
+      "alerts.title": "Seat alerts", "alerts.dur": "New watches last {d}.", "alerts.empty": "Watch a flight to receive a push update whenever its seats change.",
+      "alerts.left": "{s} s left", "alerts.ended": "Watch ended", "alerts.seats": "Seats: {n}", "alerts.unknownSeats": "Seats: –",
+      "alerts.noUpdate": "No updates received yet", "alerts.refresh": "Refresh",
+      "alerts.note": "Updates are pushed by the server as UDP callbacks. They are not acknowledged and can be lost – use Refresh to check.",
+      "alerts.update": "Server update: {n} seats",
+      "activity.title": "This tab's activity", "activity.note": "Kept in this page only – the server stores no orders.",
+      "activity.empty": "Nothing yet.", "activity.book": "Book {n} · flight {id}", "activity.return": "Return {n} · flight {id}",
+      "activity.watch": "Watch · flight {id}",
+      "outcome.ok": "Success", "outcome.err": "Failed", "outcome.unknown": "Result unknown",
+      "toast.update": "Flight {id}: {n} seats available now", "toast.watch": "Watching flight {id} for {d}",
+      "toast.ended": "Watch on flight {id} ended", "toast.watchFail": "Could not watch flight {id}: {msg}",
+      "lab.title": "Lab console", "lab.sub": "The UDP client behind this tab: invocation semantics, retransmission, loss simulation and every datagram.",
+      "lab.close": "Close", "lab.conn": "Connection", "lab.port": "This tab's UDP port", "lab.server": "Server", "lab.semantics": "Semantics",
+      "lab.settings": "Invocation settings", "lab.timeout": "Timeout (ms)", "lab.retries": "Retries", "lab.loss": "Request loss rate", "lab.apply": "Apply",
+      "lab.settingsHint": "Start the server with the same --semantics. Timeout × (retries + 1) must stay ≤ 30 s because the server keeps its reply history for 60 s.",
+      "lab.applied": "Applied: {sem}, timeout {t} ms, {r} retries, request loss rate {l}.",
+      "lab.raw": "Raw service calls",
+      "lab.rawHint": "Each button sends exactly one request (plus its retransmissions). Use these for reproducible experiments: a search on the main page also sends one detail request per flight found.",
+      "lab.wire": "Wire log", "lab.bytes": "bytes", "lab.autoscroll": "auto-scroll", "lab.clear": "Clear",
+      "lab.legend": "Header = {a} {b} {c} (3 × uint32, big-endian), then the body. Strings are a uint32 length followed by UTF-8 bytes.",
+      "raw.query": "1 · Query flights", "raw.info": "2 · Flight info", "raw.reserve": "3 · Reserve seats", "raw.monitor": "4 · Register monitor",
+      "raw.seats": "5 · Seat count", "raw.cancel": "6 · Cancel seats", "raw.send": "Send",
+      "f.source": "Source", "f.dest": "Destination", "f.flight": "Flight ID", "f.seats": "Seats", "f.interval": "Interval (s)",
+      "tag.idem": "idempotent", "tag.nonidem": "non-idempotent", "tag.callback": "callback",
+      "sem.amo": "at-most-once (retransmit; server filters duplicates)", "sem.alo": "at-least-once (retransmit; server re-executes)", "sem.maybe": "maybe (send once, no retransmission)",
+      "meta": "request #{id} · {a} attempt(s) · {ms} ms · {sem}", "bridgeErr": "Bridge error: {msg}",
+      "raw.ok.query_flights": "Flights: {ids}", "raw.ok.get_flight_info": "{src} → {dst}, {dep}, fare {fare}, {seats} seats",
+      "raw.ok.reserve_seats": "Reserved. Remaining seats: {n}", "raw.ok.register_monitor": "Monitoring for {s} s (updates appear under Seat alerts)",
+      "raw.ok.get_seat_count": "Seats available: {n}", "raw.ok.cancel_reservation": "Returned. Seats available: {n}",
+      "footer": "SC6103 Distributed Systems · course project. All flight data comes from the project's test server; nothing is invented by this page.",
+      "status.0": "Success", "status.1": "Invalid input", "status.2": "Flight not found", "status.3": "No flights found",
+      "status.4": "Insufficient seats", "status.5": "Invalid seat count (must be a positive number)",
+      "status.6": "Invalid watch duration (1–3600 s)", "status.7": "Cannot return more seats than are currently reserved",
+      "status.99": "Server error", "status.100": "No reply from the server", "status.101": "Malformed reply from the server",
+      "wd": ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+      "mon": ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
+      "dur.s": "{n} s", "dur.m": "{n} min"
+    },
+    zh: {
+      "nav.find": "查找航班", "nav.alerts": "余票提醒", "nav.lab": "实验控制台",
+      "conn.connecting": "正在连接…", "conn.on": "已连接", "conn.lost": "连接中断，正在重连",
+      "conn.restarted": "桥已重启，正在重新连接", "conn.unreachable": "无法连接到桥，正在重试",
+      "hero.title": "查找并预订航班",
+      "hero.sub": "数据实时来自航班服务器（UDP）。每个请求、重传和服务器回调都可以在实验控制台中查看。",
+      "search.from": "出发城市", "search.to": "到达城市", "search.pax": "人数", "search.swap": "交换城市",
+      "search.go": "搜索", "search.phFrom": "如：北京", "search.phTo": "如：上海",
+      "search.hint": "输入建议为服务器测试数据中的城市；搜索按出发城市和到达城市精确匹配。",
+      "search.empty": "请输入出发城市和到达城市。", "search.same": "出发城市和到达城市不能相同。",
+      "results.title": "航班", "results.idle": "输入航线并搜索，即可查看航班和实时余票。",
+      "results.searching": "正在搜索…", "results.count": "{from} → {to}，共 {n} 个航班",
+      "results.none": "没有从 {from} 到 {to} 的航班。", "results.error": "搜索失败：{msg}", "results.retry": "重试",
+      "card.loading": "正在获取详情…", "card.unavailable": "无法获取详情：{msg}", "card.flight": "航班 {id}",
+      "card.fare": "票价", "card.left": "余票 {n}", "card.soldOut": "已售罄", "card.fewer": "余票少于 {n} 张",
+      "card.select": "选择航班", "card.selected": "已选择", "card.watch": "关注余票", "card.watching": "关注中",
+      "card.details": "详情", "card.hide": "收起详情", "card.asOf": "余票更新于 {time}", "card.refresh": "刷新余票",
+      "card.departs": "出发时间", "card.route": "航线", "card.seats": "剩余座位", "card.number": "航班号",
+      "book.title": "预订", "book.empty": "选择航班后在这里预订座位。", "book.pax": "人数",
+      "book.unit": "单价", "book.total": "合计", "book.noCurrency": "票价按服务器数据原样显示，数据未定义币种。",
+      "book.confirm": "确认预订", "book.busy": "正在预订…",
+      "book.ok": "已为航班 {id} 预订 {n} 个座位。服务器返回余票 {left}。",
+      "book.insufficient": "余票不足：仅剩 {left} 个座位。",
+      "unknown": "没有收到服务器回复，请求可能已经执行。请勿立即重复提交，可先刷新余票核对。",
+      "book.close": "关闭", "book.return": "退回座位",
+      "book.returnHint": "服务器不保存订单和账户。此操作把座位退回该航班（最多为该航班当前已被预订的数量）。",
+      "book.returnBtn": "退回", "book.returnBusy": "正在退回…", "book.returnOk": "已退回 {n} 个座位，当前余票 {left}。",
+      "alerts.title": "余票提醒", "alerts.dur": "新的关注时长为 {d}。", "alerts.empty": "关注航班后，余票每次变化时服务器都会推送通知。",
+      "alerts.left": "剩余 {s} 秒", "alerts.ended": "关注已结束", "alerts.seats": "余票：{n}", "alerts.unknownSeats": "余票：–",
+      "alerts.noUpdate": "尚未收到更新", "alerts.refresh": "刷新",
+      "alerts.note": "更新由服务器通过 UDP 回调推送，没有确认和重传，可能丢失；可点击刷新核对。",
+      "alerts.update": "服务器推送：余票 {n}",
+      "activity.title": "本标签页操作记录", "activity.note": "仅保存在本页面，服务器不保存订单。",
+      "activity.empty": "暂无记录。", "activity.book": "预订 {n} 座 · 航班 {id}", "activity.return": "退回 {n} 座 · 航班 {id}",
+      "activity.watch": "关注余票 · 航班 {id}",
+      "outcome.ok": "成功", "outcome.err": "失败", "outcome.unknown": "结果未知",
+      "toast.update": "航班 {id} 余票更新为 {n}", "toast.watch": "已关注航班 {id}，时长 {d}",
+      "toast.ended": "航班 {id} 的关注已结束", "toast.watchFail": "无法关注航班 {id}：{msg}",
+      "lab.title": "实验控制台", "lab.sub": "本标签页背后的 UDP 客户端：调用语义、重传、丢包模拟以及每个数据报。",
+      "lab.close": "收起", "lab.conn": "连接", "lab.port": "本标签页 UDP 端口", "lab.server": "服务器", "lab.semantics": "调用语义",
+      "lab.settings": "调用设置", "lab.timeout": "超时（毫秒）", "lab.retries": "重传次数", "lab.loss": "请求丢失率", "lab.apply": "应用",
+      "lab.settingsHint": "服务器需以相同的 --semantics 启动。超时 ×（重传次数 + 1）不得超过 30 秒，因为服务器的回复历史只保留 60 秒。",
+      "lab.applied": "已应用：{sem}，超时 {t} 毫秒，重传 {r} 次，请求丢失率 {l}。",
+      "lab.raw": "原始服务调用",
+      "lab.rawHint": "每个按钮只发送一个请求（及其重传），适合做可复现的实验。主页面的搜索还会为每个结果额外发送一次详情请求。",
+      "lab.wire": "线路日志", "lab.bytes": "字节", "lab.autoscroll": "自动滚动", "lab.clear": "清空",
+      "lab.legend": "消息头 = {a} {b} {c}（3 个大端 uint32），之后是消息体。字符串为 uint32 长度加 UTF-8 字节。",
+      "raw.query": "1 · 查询航班", "raw.info": "2 · 航班详情", "raw.reserve": "3 · 预订座位", "raw.monitor": "4 · 注册监控",
+      "raw.seats": "5 · 查询余票", "raw.cancel": "6 · 取消座位", "raw.send": "发送",
+      "f.source": "出发地", "f.dest": "目的地", "f.flight": "航班号", "f.seats": "座位数", "f.interval": "时长（秒）",
+      "tag.idem": "幂等", "tag.nonidem": "非幂等", "tag.callback": "回调",
+      "sem.amo": "at-most-once（重传；服务器过滤重复请求）", "sem.alo": "at-least-once（重传；服务器重复执行）", "sem.maybe": "maybe（只发送一次，不重传）",
+      "meta": "请求 #{id} · 尝试 {a} 次 · {ms} 毫秒 · {sem}", "bridgeErr": "桥接错误：{msg}",
+      "raw.ok.query_flights": "航班：{ids}", "raw.ok.get_flight_info": "{src} → {dst}，{dep}，票价 {fare}，余票 {seats}",
+      "raw.ok.reserve_seats": "预订成功，余票 {n}", "raw.ok.register_monitor": "监控 {s} 秒（更新显示在“余票提醒”中）",
+      "raw.ok.get_seat_count": "余票：{n}", "raw.ok.cancel_reservation": "已退回，余票 {n}",
+      "footer": "SC6103 分布式系统课程项目。所有航班数据均来自项目测试服务器，本页面不编造任何信息。",
+      "status.0": "成功", "status.1": "输入无效", "status.2": "航班不存在", "status.3": "未找到航班",
+      "status.4": "余票不足", "status.5": "座位数无效（必须为正数）",
+      "status.6": "关注时长无效（1–3600 秒）", "status.7": "退回数量不能超过当前已预订的座位数",
+      "status.99": "服务器错误", "status.100": "服务器无回复", "status.101": "服务器回复格式错误",
+      "wd": ["周日", "周一", "周二", "周三", "周四", "周五", "周六"],
+      "mon": null,
+      "dur.s": "{n} 秒", "dur.m": "{n} 分钟"
+    }
+  };
 
-  // Safari before 16 has no form.requestSubmit(); clicking the submit button
-  // also runs the browser's constraint validation.
-  function submitForm(f) {
-    if (f.requestSubmit) f.requestSubmit();
-    else f.querySelector("button[type=submit]").click();
+  // Cities of the server's test data; the server is queried with the English name.
+  const CITIES = [
+    ["Beijing", "北京"], ["Shanghai", "上海"], ["Guangzhou", "广州"], ["Chengdu", "成都"], ["Shenzhen", "深圳"],
+    ["Xi'an", "西安"], ["Hangzhou", "杭州"], ["Wuhan", "武汉"], ["Nanjing", "南京"], ["Kunming", "昆明"]
+  ];
+
+  // ======================================================================
+  // Helpers
+  // ======================================================================
+  const $ = (id) => document.getElementById(id);
+  const TOKEN_KEY = "flight-bridge-token";   // sessionStorage: one UDP client per tab
+  const LANG_KEY = "flight-ui-lang";         // localStorage: language preference only
+  const LAB_KEY = "flight-ui-lab";
+
+  function load(key, store) { try { return store.getItem(key); } catch (e) { return null; } }
+  function save(key, value, store) { try { store.setItem(key, value); } catch (e) { /* private mode */ } }
+
+  let lang = load(LANG_KEY, localStorage) === "zh" ? "zh" : "en";
+
+  function t(key, vars) {
+    let s = I18N[lang][key];
+    if (s === undefined || s === null) s = I18N.en[key];
+    if (s === undefined) return key;
+    if (vars) s = s.replace(/\{(\w+)\}/g, (m, k) => (vars[k] !== undefined ? vars[k] : m));
+    return s;
+  }
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+  function statusText(code) { return t("status." + code) !== "status." + code ? t("status." + code) : "Error " + code; }
+  function fare(v) { return Number(v).toFixed(2); }
+  function cityLabel(en) {
+    if (lang !== "zh") return en;
+    const c = CITIES.find((x) => x[0].toLowerCase() === String(en).toLowerCase());
+    return c ? c[1] : en;
+  }
+  function resolveCity(text) {
+    const s = text.trim();
+    const c = CITIES.find((x) => x[0].toLowerCase() === s.toLowerCase() || x[1] === s);
+    return c ? c[0] : s;
+  }
+  function clock(ts) { const d = new Date(ts); return d.toTimeString().slice(0, 8); }
+  function parseDeparture(s) {
+    const m = /^(\d{4})-(\d\d)-(\d\d) (\d\d:\d\d)$/.exec(s || "");
+    if (!m) return { time: s || "–", date: "" };
+    const y = +m[1], mo = +m[2], d = +m[3];
+    const wd = t("wd")[new Date(Date.UTC(y, mo - 1, d)).getUTCDay()];
+    const date = lang === "zh" ? `${y}年${mo}月${d}日 ${wd}` : `${wd}, ${d} ${I18N.en.mon[mo - 1]} ${y}`;
+    return { time: m[4], date };
+  }
+  function durLabel(sec) { return sec >= 60 && sec % 60 === 0 ? t("dur.m", { n: sec / 60 }) : t("dur.s", { n: sec }); }
+  function icon(name) { return `<svg class="i"><use href="#i-${name}"/></svg>`; }
+
+  // ======================================================================
+  // State (what the page knows; every number comes from a server reply)
+  // ======================================================================
+  const S = {
+    token: null, info: null,
+    search: { status: "idle", from: "", to: "", msg: "" },
+    flights: [],            // [{id, state:'loading'|'ok'|'error', err, open}]
+    cache: {},              // flight id -> {flight fields..., seatsAt}
+    selectedId: null,
+    pax: 1,
+    booking: { busy: false, result: null },
+    ret: { busy: false, seats: 1, result: null },
+    watchDur: 60,
+    watches: {},            // flight id -> {expires, ended, seats, seatsAt, updates: [{time, seats, replay}]}
+    activity: []            // [{time, text, kind}]
+  };
+
+  // ======================================================================
+  // Bridge API
+  // ======================================================================
+  async function api(path, body) {
+    const payload = Object.assign(S.token ? { token: S.token } : {}, body || {});
+    const resp = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    let data;
+    try { data = await resp.json(); } catch (e) { throw new Error("Invalid response from bridge"); }
+    if (!resp.ok) throw new Error(data.error || ("HTTP " + resp.status));
+    return data;
+  }
+  async function svc(op, args) {
+    try {
+      return await api("/api/call", { op, args });
+    } catch (e) {
+      if (/Unknown session/.test(e.message)) scheduleReconnect(500);
+      return { status: -1, bridgeError: e.message };
+    }
+  }
+  function errText(r) {
+    if (r.status === -1) return t("bridgeErr", { msg: r.bridgeError });
+    return statusText(r.status);
+  }
+  function metaText(r) {
+    if (!r || r.request_id === undefined) return "";
+    return t("meta", { id: r.request_id, a: r.attempts, ms: r.elapsed_ms, sem: r.semantics });
   }
 
-  // sessionStorage is copied when a tab is duplicated, so two tabs could share
-  // one UDP client. Ask other tabs whether they already own this token.
-  function tokenInUseElsewhere(t) {
+  // ======================================================================
+  // Session and event stream (unchanged behaviour)
+  // ======================================================================
+  let es = null, reconnectTimer = null, channel = null;
+
+  function tokenInUseElsewhere(tok) {
     return new Promise((resolve) => {
-      if (!t || typeof BroadcastChannel === "undefined") return resolve(false);
-      const bc = new BroadcastChannel("flight-bridge-" + t);
+      if (!tok || typeof BroadcastChannel === "undefined") return resolve(false);
+      const bc = new BroadcastChannel("flight-bridge-" + tok);
       const timer = setTimeout(() => { bc.close(); resolve(false); }, 250);
       bc.onmessage = (ev) => { if (ev.data === "pong") { clearTimeout(timer); bc.close(); resolve(true); } };
       bc.postMessage("ping");
     });
   }
-
-  function ownToken(t) {
+  function ownToken(tok) {
     if (typeof BroadcastChannel === "undefined") return;
     if (channel) channel.close();
-    channel = new BroadcastChannel("flight-bridge-" + t);
+    channel = new BroadcastChannel("flight-bridge-" + tok);
     channel.onmessage = (ev) => { if (ev.data === "ping") channel.postMessage("pong"); };
   }
-
-  // ---------------------------------------------------------------- helpers
-  function esc(s) {
-    return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-  }
-
-  async function api(path, body) {
-    const payload = Object.assign(token ? { token } : {}, body || {});
-    const resp = await fetch(path, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const data = await resp.json().catch(() => ({ error: "Invalid response from bridge" }));
-    if (!resp.ok) throw new Error(data.error || ("HTTP " + resp.status));
-    return data;
-  }
-
-  function showResult(el, cls, html, meta) {
-    el.hidden = false;
-    el.className = "result " + cls;
-    el.innerHTML = html + (meta ? '<div class="meta">' + esc(meta) + "</div>" : "");
-  }
-
-  function metaOf(r) {
-    return "request #" + r.request_id + " · " + r.attempts + " attempt" + (r.attempts > 1 ? "s" : "") +
-      " · " + r.elapsed_ms + " ms · " + r.semantics;
-  }
-
-  function formOf(id) {
-    const data = {};
-    new FormData($(id)).forEach((v, k) => { data[k] = v; });
-    return data;
-  }
-
-  // Run a service call, render the outcome into a result box.
-  async function call(op, args, el, render) {
-    if (el.dataset.busy) return;              // one call per card at a time
-    const buttons = el.parentElement.querySelectorAll("button[type=submit]");
-    buttons.forEach((b) => (b.disabled = true));
-    el.dataset.busy = "1";
-    showResult(el, "", "Sending…");
-    try {
-      const r = await api("/api/call", { op, args });
-      if (r.status === 0) {
-        showResult(el, "ok", render(r), metaOf(r));
-      } else if (r.status === 100 && !r.idempotent) {
-        showResult(el, "warn", "<b>No reply — the outcome is unknown.</b> The request may have been executed by the server " +
-          "even though no reply arrived. Check the seat availability before trying again.", metaOf(r));
-      } else {
-        showResult(el, "err", "Error: " + esc(r.message), metaOf(r));
-      }
-      return r;
-    } catch (e) {
-      showResult(el, "err", "Bridge error: " + esc(e.message));
-      if (/Unknown session/.test(e.message)) scheduleReconnect(500);   // bridge was restarted
-    } finally {
-      delete el.dataset.busy;
-      buttons.forEach((b) => (b.disabled = false));
-    }
-  }
-
-  // ------------------------------------------------------------- session
   async function connect() {
-    try { token = sessionStorage.getItem(TOKEN_KEY); } catch (e) { token = null; }
-    if (await tokenInUseElsewhere(token)) token = null;   // duplicated tab: get our own client
+    S.token = load(TOKEN_KEY, sessionStorage);
+    if (await tokenInUseElsewhere(S.token)) S.token = null;   // duplicated tab: get our own client
     const info = await api("/api/session", {});
-    token = info.token;
-    try { sessionStorage.setItem(TOKEN_KEY, token); } catch (e) { /* private mode */ }
-    ownToken(token);
-    applyState(info);
+    S.token = info.token;
+    save(TOKEN_KEY, S.token, sessionStorage);
+    ownToken(S.token);
+    applyInfo(info);
     openEvents();
   }
-
   function scheduleReconnect(delay) {
     if (reconnectTimer) return;
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null;
-      connect().catch(() => { setConn(false, "cannot reach bridge – retrying"); scheduleReconnect(3000); });
+      connect().catch(() => { setConn("off", "conn.unreachable"); scheduleReconnect(3000); });
     }, delay);
   }
+  let connState = ["", "conn.connecting"];
+  function setConn(cls, key) { connState = [cls, key]; $("dot").className = "dot " + cls; $("conn-text").textContent = t(key); }
 
-  function applyState(info) {
-    state = info;
-    $("badge-client").textContent = "client: this tab = UDP port " + info.local_port;
-    $("badge-server").textContent = "server: " + info.server;
-    $("badge-sem").textContent = "semantics: " + info.settings.semantics;
+  function applyInfo(info) {
+    S.info = info;
+    $("conn-chip").textContent = "UDP :" + info.local_port;
+    $("lab-port").textContent = info.local_port;
+    $("lab-server").textContent = info.server;
+    $("lab-sem").textContent = info.settings.semantics;
     const f = $("f-settings");
     f.semantics.value = info.settings.semantics;
     f.timeout_ms.value = info.settings.timeout_ms;
     f.retries.value = info.settings.retries;
     f.loss_rate.value = info.settings.loss_rate;
-    renderMonitors(info.monitors || []);
-  }
-
-  function setConn(on, text) {
-    $("dot").className = "dot " + (on ? "on" : "off");
-    $("conn").textContent = text;
+    // monitors the bridge knows about (e.g. after a reload)
+    (info.monitors || []).forEach((m) => {
+      const w = S.watches[m.flight_id] || (S.watches[m.flight_id] = { seats: null, seatsAt: null, updates: [] });
+      w.expires = Date.now() + m.remaining_seconds * 1000;
+      w.ended = false;
+    });
+    renderWatches();
   }
 
   function openEvents() {
     if (es) es.close();
-    es = new EventSource("/api/events?token=" + encodeURIComponent(token));
+    es = new EventSource("/api/events?token=" + encodeURIComponent(S.token));
     es.addEventListener("hello", (ev) => {
-      const info = JSON.parse(ev.data);
-      $("wire").innerHTML = "";          // the bridge replays the recent log after hello
-      $("feed").innerHTML = "";
-      applyState(info);
-      setConn(true, "connected to bridge");
+      $("wire").innerHTML = "";                               // the bridge replays recent events after hello
+      Object.values(S.watches).forEach((w) => { w.updates = []; });
+      applyInfo(JSON.parse(ev.data));
+      setConn("on", "conn.on");
     });
     es.addEventListener("wire", (ev) => addWire(JSON.parse(ev.data)));
     es.addEventListener("log", (ev) => addLog(JSON.parse(ev.data)));
-    es.addEventListener("callback", (ev) => addCallback(JSON.parse(ev.data)));
+    es.addEventListener("callback", (ev) => onCallback(JSON.parse(ev.data)));
     es.onerror = () => {
-      if (es.readyState === EventSource.CLOSED) {
-        // A non-200 answer (e.g. 404 after the bridge was restarted and forgot
-        // our token) ends the stream for good: start over with a new session.
-        setConn(false, "bridge restarted – reconnecting");
-        scheduleReconnect(2000);
-      } else {
-        setConn(false, "bridge connection lost – reconnecting");
-      }
+      if (es.readyState === EventSource.CLOSED) { setConn("off", "conn.restarted"); scheduleReconnect(2000); }
+      else setConn("off", "conn.lost");
     };
   }
 
-  // ------------------------------------------------------------- wire log
+  // ======================================================================
+  // Seat numbers: one place that applies a value the server just reported
+  // ======================================================================
+  function noteSeats(id, seats) {
+    const now = Date.now();
+    const f = S.cache[id];
+    if (f) { f.seat_availability = seats; f.seatsAt = now; }
+    const w = S.watches[id];
+    if (w) { w.seats = seats; w.seatsAt = now; }
+  }
+
+  // ======================================================================
+  // Search -> flight cards
+  // ======================================================================
+  async function doSearch() {
+    const fromText = $("from").value, toText = $("to").value;
+    const from = resolveCity(fromText), to = resolveCity(toText);
+    const msg = $("search-msg");
+    msg.hidden = true;
+    if (!from || !to) { msg.textContent = t("search.empty"); msg.hidden = false; return; }
+    if (from.toLowerCase() === to.toLowerCase()) { msg.textContent = t("search.same"); msg.hidden = false; return; }
+
+    S.search = { status: "searching", from, to, msg: "" };
+    S.flights = [];
+    $("search-btn").disabled = true;
+    renderResults();
+    const r = await svc("query_flights", { source: from, destination: to });
+    $("search-btn").disabled = false;
+    if (r.status === 0) {
+      S.search.status = "done";
+      S.flights = r.flight_ids.map((id) => ({ id, state: "loading", err: null, open: false }));
+      renderResults();
+      // One detail request per result, one after another (keeps the request order predictable).
+      for (const fl of S.flights) await loadDetail(fl);
+    } else if (r.status === 3) {
+      S.search.status = "none"; renderResults();
+    } else {
+      S.search.status = "error"; S.search.msg = errText(r); renderResults();
+    }
+  }
+
+  async function loadDetail(fl) {
+    fl.state = "loading"; renderResults();
+    const r = await svc("get_flight_info", { flight_id: fl.id });
+    if (r.status === 0) {
+      S.cache[fl.id] = Object.assign({}, r.flight, { seatsAt: Date.now() });
+      fl.state = "ok";
+      if (S.watches[fl.id]) noteSeats(fl.id, r.flight.seat_availability);
+    } else {
+      fl.state = "error"; fl.err = errText(r);
+    }
+    renderResults(); renderBooking(); renderWatches();
+  }
+
+  async function refreshSeats(id, btn) {
+    if (btn) btn.disabled = true;
+    const r = await svc("get_seat_count", { flight_id: id });
+    if (btn) btn.disabled = false;
+    if (r.status === 0) noteSeats(id, r.seat_count);
+    else toast(t("card.flight", { id }) + ": " + errText(r), "alert");
+    renderAll();
+  }
+
+  function seatsBadge(f) {
+    const n = f.seat_availability;
+    if (n <= 0) return `<span class="seats none">${icon("seat")}${t("card.soldOut")}</span>`;
+    const low = n < S.pax ? " none" : (n <= 10 ? " low" : "");
+    const extra = n < S.pax ? ` · ${t("card.fewer", { n: S.pax })}` : "";
+    return `<span class="seats${low}">${icon("seat")}${t("card.left", { n })}${extra}</span>`;
+  }
+
+  function renderResults() {
+    const box = $("results"), sub = $("results-sub");
+    const s = S.search;
+    sub.textContent = "";
+    if (s.status === "idle") { box.innerHTML = `<div class="empty">${t("results.idle")}</div>`; return; }
+    if (s.status === "searching") { box.innerHTML = `<div class="empty">${t("results.searching")}</div>`; return; }
+    if (s.status === "none") { box.innerHTML = `<div class="empty">${esc(t("results.none", { from: cityLabel(s.from), to: cityLabel(s.to) }))}</div>`; return; }
+    if (s.status === "error") {
+      box.innerHTML = `<div class="empty err">${esc(t("results.error", { msg: s.msg }))}<div style="margin-top:10px"><button class="btn sm ghost" type="button" data-act="research">${t("results.retry")}</button></div></div>`;
+      return;
+    }
+    sub.textContent = t("results.count", { n: S.flights.length, from: cityLabel(s.from), to: cityLabel(s.to) });
+    box.innerHTML = S.flights.map(cardHtml).join("");
+    S.flights.forEach((fl) => { fl.drawn = fl.state; });
+  }
+
+  function cardHtml(fl) {
+    const id = fl.id;
+    const enter = fl.drawn !== fl.state ? " enter" : "";
+    const head = `<span class="tag">${esc(t("card.flight", { id }))}</span>`;
+    if (fl.state === "loading") {
+      return `<article class="card loading${enter}"><div class="top"><div><div class="skel" style="width:90px;height:26px"></div><div class="skel" style="width:180px;margin-top:10px"></div></div><div><div class="skel" style="width:110px"></div></div><div class="muted">${t("card.loading")}</div></div><div class="meta-row">${head}</div></article>`;
+    }
+    if (fl.state === "error") {
+      return `<article class="card${enter}"><div class="alert err" style="margin:0">${icon("alert")}<span>${esc(t("card.unavailable", { msg: fl.err }))}</span></div><div class="meta-row">${head}<button class="linkbtn" type="button" data-act="retry" data-id="${id}">${icon("refresh")}${t("results.retry")}</button></div></article>`;
+    }
+    const f = S.cache[id];
+    const dep = parseDeparture(f.departure_time);
+    const sel = S.selectedId === id;
+    const w = S.watches[id];
+    const watching = w && !w.ended;
+    const details = fl.open ? `<dl class="details">
+        <dt>${t("card.number")}</dt><dd>${id}</dd>
+        <dt>${t("card.route")}</dt><dd>${esc(cityLabel(f.source))} → ${esc(cityLabel(f.destination))}</dd>
+        <dt>${t("card.departs")}</dt><dd>${esc(f.departure_time)}</dd>
+        <dt>${t("card.fare")}</dt><dd>${fare(f.airfare)}</dd>
+        <dt>${t("card.seats")}</dt><dd>${f.seat_availability} <span class="muted">(${t("card.asOf", { time: clock(f.seatsAt) })})</span></dd>
+      </dl>` : "";
+    return `<article class="card${sel ? " sel" : ""}${enter}">
+      <div class="top">
+        <div class="when">
+          <div class="time">${esc(dep.time)}</div>
+          <div class="date">${esc(dep.date)}</div>
+          <div class="route">${esc(cityLabel(f.source))}${icon("arrow")}${esc(cityLabel(f.destination))}</div>
+        </div>
+        <div class="fare">
+          <div class="lbl">${t("card.fare")}</div>
+          <div class="amt">${fare(f.airfare)}</div>
+          ${seatsBadge(f)}
+        </div>
+        <div class="actions">
+          <button class="btn sm${sel ? " ghost" : ""}" type="button" data-act="select" data-id="${id}">${sel ? t("card.selected") : t("card.select")}</button>
+          <button class="btn sm quiet" type="button" data-act="watch" data-id="${id}" ${watching ? "disabled" : ""}>${icon("bell")}${watching ? t("card.watching") : t("card.watch")}</button>
+        </div>
+      </div>
+      ${details}
+      <div class="meta-row">${head}
+        <button class="linkbtn" type="button" data-act="details" data-id="${id}">${fl.open ? t("card.hide") : t("card.details")}</button>
+        <button class="linkbtn" type="button" data-act="refresh" data-id="${id}">${icon("refresh")}${t("card.refresh")}</button>
+      </div>
+    </article>`;
+  }
+
+  $("results").addEventListener("click", (ev) => {
+    const b = ev.target.closest("button[data-act]");
+    if (!b) return;
+    const id = Number(b.dataset.id);
+    const act = b.dataset.act;
+    if (act === "research") doSearch();
+    if (act === "retry") { const fl = S.flights.find((x) => x.id === id); if (fl) loadDetail(fl); }
+    if (act === "details") { const fl = S.flights.find((x) => x.id === id); fl.open = !fl.open; renderResults(); }
+    if (act === "refresh") refreshSeats(id, b);
+    if (act === "select") selectFlight(id);
+    if (act === "watch") startWatch(id, b);
+  });
+
+  // ======================================================================
+  // Booking side panel
+  // ======================================================================
+  function selectFlight(id) {
+    if (S.selectedId !== id) {
+      S.selectedId = id;
+      S.pax = Math.max(1, Number($("pax").value) || 1);
+      S.booking = { busy: false, result: null };
+      S.ret = { busy: false, seats: 1, result: null };
+    }
+    renderResults(); renderBooking();
+    if (window.matchMedia("(max-width: 980px)").matches) $("booking").scrollIntoView({ block: "start" });
+  }
+
+  function resultHtml(res) {
+    if (!res) return "";
+    const ic = res.kind === "ok" ? "check" : "alert";
+    const cls = res.kind === "ok" ? "ok" : (res.kind === "unknown" ? "warn" : "err");
+    return `<div class="alert ${cls}">${icon(ic)}<span>${esc(res.text)}<span class="meta">${esc(res.meta || "")}</span></span></div>`;
+  }
+
+  function renderBooking() {
+    const box = $("booking");
+    const id = S.selectedId;
+    if (id === null) {
+      box.innerHTML = `<h3>${icon("plane")}${t("book.title")}</h3><div class="muted">${t("book.empty")}</div>`;
+      return;
+    }
+    const f = S.cache[id];
+    const dep = parseDeparture(f.departure_time);
+    const total = fare(f.airfare * S.pax);
+    box.innerHTML = `
+      <h3>${icon("plane")}${t("book.title")}<button class="linkbtn x" type="button" data-act="close" aria-label="${t("book.close")}">${icon("x")}</button></h3>
+      <div class="sum">
+        <div class="r1"><b>${esc(cityLabel(f.source))} → ${esc(cityLabel(f.destination))}</b><span class="tag">${esc(t("card.flight", { id }))}</span></div>
+        <div class="r2">${esc(dep.date)} · ${esc(dep.time)} · ${t("card.left", { n: f.seat_availability })}</div>
+      </div>
+      <div class="rows">
+        <div class="row"><span>${t("book.pax")}</span>
+          <span class="stepper"><button type="button" data-act="pax" data-d="-1" aria-label="−">−</button><input id="book-pax" type="number" min="1" max="99" value="${S.pax}" inputmode="numeric"><button type="button" data-act="pax" data-d="1" aria-label="+">+</button></span></div>
+        <div class="row"><span>${t("book.unit")}</span><span>${fare(f.airfare)}</span></div>
+        <div class="row total"><span>${t("book.total")}</span><span>${total}</span></div>
+      </div>
+      <button class="btn" style="width:100%" type="button" data-act="confirm" ${S.booking.busy ? "disabled" : ""}>${S.booking.busy ? t("book.busy") : t("book.confirm")}</button>
+      <div class="note">${t("book.noCurrency")}</div>
+      ${resultHtml(S.booking.result)}
+      <div class="divider"></div>
+      <div style="font-weight:600;font-size:14px;margin-bottom:4px">${t("book.return")}</div>
+      <div class="note" style="margin:0 0 8px">${t("book.returnHint")}</div>
+      <div class="inline"><input id="ret-seats" type="number" min="1" value="${S.ret.seats}" aria-label="${t("f.seats")}">
+        <button class="btn sm quiet" type="button" data-act="return" ${S.ret.busy ? "disabled" : ""}>${S.ret.busy ? t("book.returnBusy") : t("book.returnBtn")}</button></div>
+      ${resultHtml(S.ret.result)}`;
+  }
+
+  $("booking").addEventListener("click", (ev) => {
+    const b = ev.target.closest("button[data-act]");
+    if (!b) return;
+    const act = b.dataset.act;
+    if (act === "close") { S.selectedId = null; renderResults(); renderBooking(); }
+    if (act === "pax") { S.pax = Math.min(99, Math.max(1, S.pax + Number(b.dataset.d))); renderBooking(); renderResults(); }
+    if (act === "confirm") confirmBooking();
+    if (act === "return") returnSeats();
+  });
+  $("booking").addEventListener("change", (ev) => {
+    if (ev.target.id === "book-pax") { S.pax = Math.min(99, Math.max(1, Math.floor(Number(ev.target.value)) || 1)); renderBooking(); renderResults(); }
+    if (ev.target.id === "ret-seats") { S.ret.seats = Math.max(1, Math.floor(Number(ev.target.value)) || 1); }
+  });
+
+  function logActivity(textKey, vars, kind) {
+    S.activity.unshift({ time: Date.now(), key: textKey, vars, kind });
+    renderActivity();
+  }
+
+  async function confirmBooking() {
+    if (S.booking.busy) return;                     // never send a second booking while one is pending
+    const id = S.selectedId, n = S.pax;
+    S.booking = { busy: true, result: null };
+    renderBooking();
+    const r = await svc("reserve_seats", { flight_id: id, seat_count: n });
+    let res;
+    if (r.status === 0) {
+      noteSeats(id, r.remaining_seats);
+      res = { kind: "ok", text: t("book.ok", { n, id, left: r.remaining_seats }) };
+    } else if (r.status === 4) {
+      noteSeats(id, r.remaining_seats);             // the server reports the current availability
+      res = { kind: "err", text: t("book.insufficient", { left: r.remaining_seats }) };
+    } else if (r.status === 100) {
+      res = { kind: "unknown", text: t("unknown") };
+    } else {
+      res = { kind: "err", text: errText(r) };
+    }
+    res.meta = metaText(r);
+    S.booking = { busy: false, result: res };
+    logActivity("activity.book", { n, id }, res.kind);
+    renderAll();
+  }
+
+  async function returnSeats() {
+    if (S.ret.busy) return;
+    const id = S.selectedId;
+    const n = Math.max(1, Math.floor(Number($("ret-seats").value)) || 1);
+    S.ret = { busy: true, seats: n, result: null };
+    renderBooking();
+    const r = await svc("cancel_reservation", { flight_id: id, seat_count: n });
+    let res;
+    if (r.status === 0) {
+      noteSeats(id, r.seat_availability);
+      res = { kind: "ok", text: t("book.returnOk", { n, left: r.seat_availability }) };
+    } else if (r.status === 100) {
+      res = { kind: "unknown", text: t("unknown") };
+    } else {
+      res = { kind: "err", text: errText(r) };
+    }
+    res.meta = metaText(r);
+    S.ret = { busy: false, seats: n, result: res };
+    logActivity("activity.return", { n, id }, res.kind);
+    renderAll();
+  }
+
+  // ======================================================================
+  // Seat alerts (server callbacks)
+  // ======================================================================
+  const watchBusy = {};
+  async function startWatch(id, btn) {
+    if (watchBusy[id]) return;
+    watchBusy[id] = true;
+    if (btn) btn.disabled = true;
+    const dur = S.watchDur;
+    const r = await svc("register_monitor", { flight_id: id, interval_seconds: dur });
+    watchBusy[id] = false;
+    if (r.status === 0) {
+      const w = S.watches[id] || (S.watches[id] = { seats: null, seatsAt: null, updates: [] });
+      w.expires = Date.now() + dur * 1000;
+      w.ended = false;
+      const f = S.cache[id];
+      if (f && w.seats === null) { w.seats = f.seat_availability; w.seatsAt = f.seatsAt; }
+      toast(t("toast.watch", { id, d: durLabel(dur) }), "bell");
+      logActivity("activity.watch", { id }, "ok");
+    } else {
+      toast(t("toast.watchFail", { id, msg: errText(r) }), "alert");
+    }
+    renderAll();
+  }
+
+  function onCallback(c) {
+    const id = c.flight_id;
+    const w = S.watches[id] || (S.watches[id] = { seats: null, seatsAt: null, updates: [] });
+    w.updates.unshift({ time: c.time, seats: c.seat_availability, replay: !!c.replay });
+    if (w.updates.length > 30) w.updates.length = 30;
+    if (!c.replay) {
+      // live callback: it carries the server's view of the remaining watch time
+      w.expires = Date.now() + c.remaining_seconds * 1000;
+      w.ended = false;
+      noteSeats(id, c.seat_availability);
+      toast(t("toast.update", { id, n: c.seat_availability }), "bell");
+    } else if (w.seats === null) {
+      w.seats = c.seat_availability;
+    }
+    renderAll();
+  }
+
+  function renderWatches() {
+    $("watch-dur-label").textContent = t("alerts.dur", { d: durLabel(S.watchDur) });
+    const ids = Object.keys(S.watches).map(Number);
+    const box = $("watches");
+    if (!ids.length) { box.innerHTML = `<div class="empty" style="margin-top:10px;padding:18px">${t("alerts.empty")}</div>`; return; }
+    const now = Date.now();
+    box.innerHTML = ids.map((id) => {
+      const w = S.watches[id];
+      const f = S.cache[id];
+      const left = Math.max(0, Math.round((w.expires - now) / 1000));
+      const ended = w.ended;
+      const route = f ? `${esc(cityLabel(f.source))} → ${esc(cityLabel(f.destination))}` : "";
+      const seats = w.seats === null ? t("alerts.unknownSeats") : t("alerts.seats", { n: w.seats });
+      const ups = w.updates.length
+        ? `<ul>${w.updates.map((u) => `<li><time>${esc(u.time)}</time><span>${t("alerts.update", { n: u.seats })}</span></li>`).join("")}</ul>`
+        : `<div class="note">${t("alerts.noUpdate")}</div>`;
+      return `<div class="watch${ended ? " ended" : ""}">
+        <div class="wh"><b>${esc(t("card.flight", { id }))}</b><span class="cd">${ended ? t("alerts.ended") : t("alerts.left", { s: left })}</span></div>
+        <div class="muted">${route}</div>
+        <div class="ws"><span>${seats}</span><button class="linkbtn" type="button" data-act="wrefresh" data-id="${id}">${icon("refresh")}${t("alerts.refresh")}</button></div>
+        ${ups}
+      </div>`;
+    }).join("");
+  }
+  $("watches").addEventListener("click", (ev) => {
+    const b = ev.target.closest("button[data-act=wrefresh]");
+    if (b) refreshSeats(Number(b.dataset.id), b);
+  });
+  $("watch-dur").addEventListener("change", (ev) => { S.watchDur = Number(ev.target.value); renderWatches(); });
+
+  // local countdown only: no requests are sent
+  setInterval(() => {
+    let changed = false;
+    const now = Date.now();
+    Object.entries(S.watches).forEach(([id, w]) => {
+      if (w.ended) return;
+      changed = true;
+      if (w.expires <= now) { w.ended = true; toast(t("toast.ended", { id }), "bell"); renderResults(); }
+    });
+    if (changed) renderWatches();
+  }, 1000);
+
+  function renderActivity() {
+    const box = $("acts");
+    if (!S.activity.length) { box.innerHTML = `<li style="display:block" class="muted">${t("activity.empty")}</li>`; return; }
+    box.innerHTML = S.activity.slice(0, 50).map((a) =>
+      `<li><time>${clock(a.time)}</time><span>${esc(t(a.key, a.vars))}</span><span class="badge ${a.kind}">${t("outcome." + a.kind)}</span></li>`).join("");
+  }
+
+  // ======================================================================
+  // Toasts
+  // ======================================================================
+  function toast(text, ic) {
+    const el = document.createElement("div");
+    el.className = "toast glass";
+    el.innerHTML = icon(ic || "bell") + `<span>${esc(text)}</span>`;
+    $("toasts").appendChild(el);
+    setTimeout(() => el.remove(), 4200);
+    while ($("toasts").children.length > 4) $("toasts").firstChild.remove();
+  }
+
+  // ======================================================================
+  // Lab console
+  // ======================================================================
+  function setLab(open) {
+    document.body.classList.toggle("lab-open", open);
+    $("lab-toggle").classList.toggle("on", open);
+    $("lab-toggle").setAttribute("aria-expanded", String(open));
+    save(LAB_KEY, open ? "1" : "0", localStorage);
+  }
+  $("lab-toggle").addEventListener("click", () => setLab(!document.body.classList.contains("lab-open")));
+  $("lab-close").addEventListener("click", () => setLab(false));
+
+  $("f-settings").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const data = {};
+    new FormData(ev.target).forEach((v, k) => { data[k] = v; });
+    const el = $("settings-res");
+    try {
+      const info = await api("/api/settings", data);
+      applyInfo(info);
+      el.style.color = "var(--ok)";
+      el.textContent = t("lab.applied", { sem: info.settings.semantics, t: info.settings.timeout_ms, r: info.settings.retries, l: info.settings.loss_rate });
+    } catch (e) {
+      el.style.color = "var(--err)";
+      el.textContent = e.message;
+    }
+  });
+
+  // the six original forms: one request each
+  document.querySelectorAll(".raw form").forEach((form) => {
+    form.addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      const op = form.dataset.op;
+      const res = form.parentElement.querySelector(".res");
+      const btn = form.querySelector("button");
+      if (btn.disabled) return;
+      const args = {};
+      new FormData(form).forEach((v, k) => { args[k] = v; });
+      btn.disabled = true;
+      res.hidden = false; res.className = "res"; res.textContent = "…";
+      const r = await svc(op, args);
+      btn.disabled = false;
+      let text, cls;
+      if (r.status === 0) {
+        cls = "ok";
+        const f = r.flight || {};
+        text = t("raw.ok." + op, {
+          ids: (r.flight_ids || []).join(", "), n: r.remaining_seats ?? r.seat_count ?? r.seat_availability, s: r.interval_seconds,
+          src: f.source, dst: f.destination, dep: f.departure_time, fare: f.airfare !== undefined ? fare(f.airfare) : "", seats: f.seat_availability
+        });
+        if (op === "reserve_seats") noteSeats(Number(args.flight_id), r.remaining_seats);
+        if (op === "cancel_reservation") noteSeats(Number(args.flight_id), r.seat_availability);
+        if (op === "get_seat_count") noteSeats(Number(args.flight_id), r.seat_count);
+        if (op === "register_monitor") {
+          const id = Number(args.flight_id);
+          const w = S.watches[id] || (S.watches[id] = { seats: null, seatsAt: null, updates: [] });
+          w.expires = Date.now() + r.interval_seconds * 1000; w.ended = false;
+        }
+        renderAll();
+      } else if (r.status === 100 && !r.idempotent) {
+        cls = "warn"; text = t("unknown");
+      } else {
+        cls = "err"; text = errText(r);
+        if (r.status === 4) text += " (" + r.remaining_seats + ")";
+      }
+      res.className = "res " + cls;
+      res.textContent = text + (r.request_id !== undefined ? "\n" + metaText(r) : "");
+    });
+  });
+
+  // ---- wire log (protocol names and hex stay as they are in the source)
   function addWire(e) {
-    const wire = $("wire");
     const div = document.createElement("div");
     div.className = "e " + e.direction;
     const arrow = { send: "→", recv: "←", drop: "✕" }[e.direction] || "·";
-    let note = e.note || "";
+    const note = e.note || "";
     let noteCls = "note";
-    if (/retransmission/.test(note) || /simulated/.test(note)) noteCls += " hot";
+    if (/retransmission|simulated/.test(note)) noteCls += " hot";
     if (/discarded/.test(note)) noteCls += " bad";
     const attempt = e.attempt ? " · attempt " + e.attempt + (e.attempts ? "/" + e.attempts : "") : "";
     let hex = "";
     if (e.hex) {
       const bytes = e.hex.split(" ");
-      const head = bytes.slice(0, 12), body = bytes.slice(12);
-      hex = '<div class="hex"><b>' + head.slice(0, 4).join(" ") + "</b> <b>" + head.slice(4, 8).join(" ") +
-        "</b> <b>" + head.slice(8, 12).join(" ") + "</b> " + esc(body.join(" ")) + "</div>";
+      if (bytes.length >= 12) {
+        hex = '<div class="hex"><b>' + bytes.slice(0, 4).join(" ") + "</b> <b>" + bytes.slice(4, 8).join(" ") +
+          "</b> <b>" + bytes.slice(8, 12).join(" ") + "</b> " + esc(bytes.slice(12).join(" ")) + "</div>";
+      } else {
+        hex = '<div class="hex">' + esc(e.hex) + "</div>";
+      }
     }
     div.innerHTML = '<div class="head"><time>' + esc(e.time) + '</time><span class="arrow">' + arrow + "</span>" +
       '<span class="type">' + esc(e.type_name) + " #" + e.request_id + "</span>" +
-      "<span>" + e.length + " B" + attempt + "</span>" +
-      "<span>" + esc(e.summary || "") + "</span>" +
+      "<span>" + e.length + " B" + attempt + "</span><span>" + esc(e.summary || "") + "</span>" +
       '<span class="' + noteCls + '">' + esc(note) + "</span></div>" + hex;
     appendWire(div);
   }
-
   function addLog(e) {
     const div = document.createElement("div");
     div.className = "e log " + e.level;
-    div.innerHTML = "<time>" + esc(e.time) + "</time>" + esc(e.text);
+    div.innerHTML = "<time>" + esc(e.time) + "</time> " + esc(e.text);
     appendWire(div);
   }
-
   function appendWire(div) {
     const wire = $("wire");
     wire.appendChild(div);
     while (wire.children.length > 400) wire.removeChild(wire.firstChild);
-    if ($("autoscroll").checked) wire.scrollTop = wire.scrollHeight;
+    if ($("autoscroll").checked) wire.parentElement.scrollTop = wire.parentElement.scrollHeight;
   }
-
-  $("show-hex").addEventListener("change", () => {
-    $("wire").classList.toggle("nohex", !$("show-hex").checked);
-  });
-  const style = document.createElement("style");
-  style.textContent = ".wire.nohex .hex { display: none; }";
-  document.head.appendChild(style);
+  $("show-hex").addEventListener("change", () => $("wire").classList.toggle("nohex", !$("show-hex").checked));
   $("clear-wire").addEventListener("click", () => ($("wire").innerHTML = ""));
 
-  // ------------------------------------------------------------- callbacks
-  function addCallback(c) {
-    const feed = $("feed");
-    const placeholder = feed.querySelector(".placeholder");
-    if (placeholder) placeholder.remove();
-    const div = document.createElement("div");
-    div.className = "item";
-    div.innerHTML = "<time>" + esc(c.time) + "</time>Flight <b>" + c.flight_id + "</b> now has <b>" +
-      c.seat_availability + "</b> seats available <span class='hint'>(watch expires in " + c.remaining_seconds + " s)</span>";
-    feed.prepend(div);
-    while (feed.children.length > 100) feed.removeChild(feed.lastChild);
-    if (c.replay) return;                   // history replayed by the bridge: expiry info is stale
-    // keep the local expiry in step with the server's view (the server also
-    // tells us about monitors whose registration reply we never saw)
-    const list = state.monitors || [];
-    let m = list.find((x) => x.flight_id === c.flight_id);
-    if (!m) { m = { flight_id: c.flight_id }; list.push(m); }
-    m.remaining_seconds = c.remaining_seconds;
-    m.expires = Date.now() + c.remaining_seconds * 1000;
-    renderMonitors(list);
+  // ======================================================================
+  // Search form controls
+  // ======================================================================
+  $("f-search").addEventListener("submit", (ev) => { ev.preventDefault(); doSearch(); });
+  $("swap").addEventListener("click", () => { const a = $("from").value; $("from").value = $("to").value; $("to").value = a; });
+  document.querySelectorAll("button[data-step]").forEach((b) => b.addEventListener("click", () => {
+    const inp = $(b.dataset.for);
+    inp.value = Math.min(99, Math.max(1, (Number(inp.value) || 1) + Number(b.dataset.step)));
+    inp.dispatchEvent(new Event("change"));
+  }));
+  $("pax").addEventListener("change", () => {
+    const v = Math.min(99, Math.max(1, Math.floor(Number($("pax").value)) || 1));
+    $("pax").value = v;
+    S.pax = v;
+    renderResults(); renderBooking();
+  });
+  document.querySelectorAll("[data-go]").forEach((b) => b.addEventListener("click", () => $(b.dataset.go).scrollIntoView({ block: "start" })));
+
+  // ======================================================================
+  // Language: re-render only; no requests, no new session
+  // ======================================================================
+  function applyStatic() {
+    document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
+    document.querySelectorAll("[data-i18n]").forEach((el) => { el.textContent = t(el.dataset.i18n); });
+    document.querySelectorAll("[data-i18n-ph]").forEach((el) => { el.placeholder = t(el.dataset.i18nPh); });
+    document.querySelectorAll("[data-i18n-title]").forEach((el) => { el.title = t(el.dataset.i18nTitle); el.setAttribute("aria-label", t(el.dataset.i18nTitle)); });
+    $("lang-label").textContent = lang === "zh" ? "English" : "中文";
+    $("legend").innerHTML = esc(t("lab.legend", { a: "\u0001", b: "\u0002", c: "\u0003" }))
+      .replace("\u0001", "<b>type</b>").replace("\u0002", "<b>request id</b>").replace("\u0003", "<b>length</b>");
+    $("cities").innerHTML = CITIES.map((c) => `<option value="${esc(lang === "zh" ? c[1] : c[0])}">${esc(lang === "zh" ? c[0] : c[1])}</option>`).join("");
+    // keep typed cities, shown in the current language when they are known
+    ["from", "to"].forEach((k) => { const v = $(k).value; if (v) $(k).value = cityLabel(resolveCity(v)); });
+    $("conn-text").textContent = t(connState[1]);
   }
-  $("clear-feed").addEventListener("click", () => ($("feed").innerHTML = '<div class="hint placeholder">Cleared.</div>'));
-
-  function renderMonitors(list) {
-    list.forEach((m) => { if (!m.expires) m.expires = Date.now() + m.remaining_seconds * 1000; });
-    state.monitors = list.filter((m) => m.expires > Date.now());
-    const el = $("monitors");
-    if (!state.monitors.length) { el.innerHTML = ""; clearInterval(monitorTimer); monitorTimer = null; return; }
-    el.innerHTML = "Watching: " + state.monitors.map((m) =>
-      '<span class="m">flight ' + m.flight_id + " · " + Math.max(0, Math.round((m.expires - Date.now()) / 1000)) + " s left</span>").join("");
-    if (!monitorTimer) monitorTimer = setInterval(() => renderMonitors(state.monitors), 1000);
-  }
-
-  // ------------------------------------------------------------- forms
-  $("f-settings").addEventListener("submit", async (ev) => {
-    ev.preventDefault();
-    const el = $("r-settings");
-    try {
-      const info = await api("/api/settings", formOf("f-settings"));
-      applyState(info);
-      showResult(el, "ok", "Applied: " + esc(info.settings.semantics) + ", timeout " + info.settings.timeout_ms +
-        " ms, " + info.settings.retries + " retries, request loss rate " + info.settings.loss_rate);
-    } catch (e) {
-      showResult(el, "err", esc(e.message));
-    }
+  function renderAll() { renderResults(); renderBooking(); renderWatches(); renderActivity(); }
+  $("lang-btn").addEventListener("click", () => {
+    lang = lang === "zh" ? "en" : "zh";
+    save(LANG_KEY, lang, localStorage);
+    applyStatic(); renderAll();
   });
 
-  $("f-query").addEventListener("submit", async (ev) => {
-    ev.preventDefault();
-    const args = formOf("f-query");
-    $("query-results").innerHTML = "";
-    const r = await call("query_flights", args, $("r-query"), (r) =>
-      "Found " + r.flight_ids.length + " flight" + (r.flight_ids.length === 1 ? "" : "s") + " from " +
-      esc(args.source) + " to " + esc(args.destination));
-    if (r && r.status === 0) {
-      $("query-results").innerHTML = "<table><tr><th>Flight</th><th>Route</th><th></th></tr>" + r.flight_ids.map((id) =>
-        "<tr><td><b>" + id + "</b></td><td>" + esc(args.source) + " → " + esc(args.destination) + "</td><td>" +
-        '<button class="small secondary" data-act="info" data-id="' + id + '">Details</button> ' +
-        '<button class="small" data-act="book" data-id="' + id + '">Book</button> ' +
-        '<button class="small secondary" data-act="watch" data-id="' + id + '">Watch</button></td></tr>').join("") + "</table>";
-    }
-  });
-
-  $("query-results").addEventListener("click", (ev) => {
-    const b = ev.target.closest("button[data-act]");
-    if (!b) return;
-    const id = b.dataset.id;
-    if (b.dataset.act === "info") { $("f-info").flight_id.value = id; submitForm($("f-info")); }
-    if (b.dataset.act === "book") { $("f-reserve").flight_id.value = id; $("f-reserve").seat_count.focus(); }
-    if (b.dataset.act === "watch") { $("f-monitor").flight_id.value = id; submitForm($("f-monitor")); }
-  });
-
-  $("f-info").addEventListener("submit", (ev) => {
-    ev.preventDefault();
-    call("get_flight_info", formOf("f-info"), $("r-info"), (r) => {
-      const f = r.flight;
-      return "<table><tr><th>Flight</th><td>" + f.flight_id + "</td></tr>" +
-        "<tr><th>Route</th><td>" + esc(f.source) + " → " + esc(f.destination) + "</td></tr>" +
-        "<tr><th>Departure</th><td>" + esc(f.departure_time) + "</td></tr>" +
-        "<tr><th>Airfare</th><td>" + f.airfare.toFixed(2) + "</td></tr>" +
-        "<tr><th>Seats available</th><td><b>" + f.seat_availability + "</b></td></tr></table>";
-    });
-  });
-
-  $("f-reserve").addEventListener("submit", (ev) => {
-    ev.preventDefault();
-    const a = formOf("f-reserve");
-    call("reserve_seats", a, $("r-reserve"), (r) =>
-      "Reserved <b>" + esc(a.seat_count) + "</b> seat(s) on flight " + esc(a.flight_id) + ". Remaining seats: <b>" + r.remaining_seats + "</b>");
-  });
-
-  $("f-cancel").addEventListener("submit", (ev) => {
-    ev.preventDefault();
-    const a = formOf("f-cancel");
-    call("cancel_reservation", a, $("r-cancel"), (r) =>
-      "Returned <b>" + esc(a.seat_count) + "</b> seat(s) on flight " + esc(a.flight_id) + ". Seats available now: <b>" + r.seat_availability + "</b>");
-  });
-
-  $("f-seats").addEventListener("submit", (ev) => {
-    ev.preventDefault();
-    const a = formOf("f-seats");
-    call("get_seat_count", a, $("r-seats"), (r) => "Flight " + esc(a.flight_id) + " has <b>" + r.seat_count + "</b> seats available");
-  });
-
-  $("f-monitor").addEventListener("submit", async (ev) => {
-    ev.preventDefault();
-    const a = formOf("f-monitor");
-    const r = await call("register_monitor", a, $("r-monitor"), (r) =>
-      "Watching flight " + esc(a.flight_id) + " for " + r.interval_seconds + " s. Updates appear under “Live seat updates”.");
-    if (r && r.status === 0) {
-      const list = (state.monitors || []).filter((m) => m.flight_id !== Number(a.flight_id));
-      list.push({ flight_id: Number(a.flight_id), remaining_seconds: r.interval_seconds, expires: Date.now() + r.interval_seconds * 1000 });
-      renderMonitors(list);
-    }
-  });
-
-  connect().catch((e) => {
-    setConn(false, "cannot reach bridge – retrying");
-    showResult($("r-settings"), "err", "Cannot reach the bridge: " + esc(e.message) + ". Is bridge.py running?");
-    scheduleReconnect(3000);
-  });
+  // ======================================================================
+  // Start
+  // ======================================================================
+  applyStatic();
+  renderAll();
+  setLab(load(LAB_KEY, localStorage) === "1");
+  setConn("", "conn.connecting");
+  connect().catch(() => { setConn("off", "conn.unreachable"); scheduleReconnect(3000); });
 })();
 </script>
 </body>

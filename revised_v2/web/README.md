@@ -52,7 +52,7 @@ Options (`python3 bridge.py --help`):
 | `--loss-rate`, `--seed` | simulated *request* loss and its seed | 0, time |
 | `--bind` | address of the local web page; keep the default unless another device must open this bridge's page | 127.0.0.1 |
 
-Semantics, timeout, retries and loss rate can also be changed per tab in the page's Settings card.
+Semantics, timeout, retries and loss rate can also be changed per tab in the page's Lab console.
 
 ## Self-test
 
@@ -67,33 +67,59 @@ python3 selftest.py --server-exe ../server       # Windows: python selftest.py -
 
 ## The page
 
-- **Search / details / book / cancel / seat availability** – services 1, 2, 3, 6, 5.
-- **Watch seat availability** – service 4. The page is not blocked while
-  watching; every callback appears under *Live seat updates*. Callbacks are
-  plain UDP datagrams (no acknowledgement), so a *Check* button is kept for
-  the authoritative seat count.
-- **Wire log** – every datagram this client sent, received or dropped, as hex
-  bytes with the 12-byte header highlighted, plus timeouts and retransmissions.
-  This is what to show when explaining marshalling and the invocation semantics.
-- A non-idempotent call (book / cancel) that gets no reply is reported as
-  *outcome unknown*: the server may have executed it (this is exactly the
-  at-least-once hazard).
+A booking-site layout on top of the same six services. English / 中文 can be
+switched at any time (top right); switching only re-renders the page – it sends
+no request and keeps the tab's UDP client, search, selection and watches.
+
+- **Search** (service 1) – From / To accept English or Chinese city names
+  (北京 is sent as `Beijing`), plus the number of passengers. For every flight
+  found the page then asks for its details (service 2) once, one after another,
+  and shows departure time, fare and seats on a card. If a detail request
+  fails the card says so and offers *Retry*; nothing is filled in by the page.
+- **Select → Confirm booking** (service 3) – *Select* only opens the booking
+  panel (no request). *Confirm booking* sends one reservation; the button is
+  disabled until the reply arrives. The panel and the card then show the
+  seat count from the server's reply. Fares are shown as stored on the server
+  (the data defines no currency).
+- **Return seats** (service 6) – in the booking panel. The server has no orders
+  or accounts; this gives seats back to the flight. *This tab's activity* is a
+  list kept by the page only.
+- **Watch availability** (service 4) – registers for callbacks for the duration
+  chosen in *Seat alerts*. Each callback updates the alert, the card and shows
+  a short notification; the countdown is local and sends nothing. Callbacks
+  are not acknowledged and can be lost, so each alert has a *Refresh* button
+  (service 5). Nothing is polled in the background.
+- **Result unknown** – a booking or return that gets no reply after all
+  retransmissions is reported as "the request may have been executed – do not
+  resubmit"; the page never retries it on its own.
+- **Lab console** (top bar, stays open until closed) – this tab's UDP port and
+  server, the invocation settings (semantics, timeout, retries, request loss),
+  the six **raw service forms** that each send exactly one request, and the
+  **wire log** with every datagram as hex (12-byte header highlighted),
+  retransmissions and simulated losses. Protocol names stay in English to
+  match the source code.
 
 ## Demo script (three laptops)
 
 1. Server laptop: `./server --port=8080 --semantics=at-most-once`.
-2. Laptop A: start the bridge, open the page, **Watch** flight 1001 for 120 s.
-3. Laptop B: start the bridge, open the page, **Book** 2 seats on 1001.
-   Laptop A's *Live seat updates* shows "Flight 1001 now has 118 seats".
-   The server log shows two different client ports, both with request #1.
-4. Semantics experiment (both rounds set the server's `--semantics` explicitly):
+2. Laptop A: start the bridge, open the page, search Beijing → Shanghai and
+   press **Watch availability** on flight 1001 (choose 2 min in *Seat alerts* first).
+3. Laptop B: start the bridge, open the page, search the same route,
+   **Select** flight 1001, set 2 passengers, **Confirm booking**.
+   Laptop A's *Seat alerts* shows "Server update: 118 seats" and a notification.
+   The server log shows two different client ports, both starting at request #1.
+4. Semantics experiment – use the **raw forms in the Lab console** so that every
+   click sends exactly one request (a search also sends one detail request per
+   flight, which changes the sequence of simulated losses). Set the server's
+   `--semantics` explicitly in both rounds:
    - restart the server with `--semantics=at-least-once --loss-rate=0.5 --seed=6103`,
-     set the tab's semantics to at-least-once, book 1 seat ten times, then *Check*:
-     more than 10 seats are gone and the wire log shows the retransmissions
-     that the server executed again;
+     set the tab's semantics to at-least-once, send *3 · Reserve seats* (1001, 1)
+     ten times, then *5 · Seat count*: more than 10 seats are gone and the wire
+     log shows the retransmissions the server executed again;
    - restart with `--semantics=at-most-once --loss-rate=0.5 --seed=6103`
-     (seats are back to 120), set the tab to at-most-once, repeat: exactly 10
-     seats are gone — duplicates were answered from the server's history.
+     (seats are back to 120), reload the page (new client), set at-most-once,
+     repeat: exactly 10 seats are gone – duplicates were answered from the
+     server's history.
 
 Keep timeout × (retries + 1) ≤ 30 s: the server forgets a reply after 60 s.
 
