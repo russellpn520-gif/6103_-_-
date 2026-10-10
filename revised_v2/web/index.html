@@ -1,0 +1,516 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flight Booking – UDP client</title>
+<style>
+  :root {
+    --bg: #f3f5f8; --card: #ffffff; --ink: #1c2430; --muted: #6b7684; --line: #dde3ea;
+    --accent: #1f6feb; --accent-ink: #ffffff; --ok: #1a7f37; --warn: #9a6700; --err: #c7372f;
+    --send: #1f6feb; --recv: #1a7f37; --drop: #c7372f; --mono: ui-monospace, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { background: #0f1d33; color: #fff; padding: 10px 20px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  header h1 { font-size: 18px; margin: 0; font-weight: 600; }
+  header .badge { font-family: var(--mono); font-size: 12px; background: rgba(255,255,255,.12); padding: 4px 8px; border-radius: 6px; }
+  header .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: #8b949e; margin-right: 6px; }
+  header .dot.on { background: #3fb950; } header .dot.off { background: #f85149; }
+  header .spacer { flex: 1; }
+  main { display: grid; grid-template-columns: minmax(380px, 5fr) minmax(420px, 6fr); gap: 16px; padding: 16px 20px; max-width: 1600px; margin: 0 auto; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  .col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  .card h2 { font-size: 14px; margin: 0 0 10px; display: flex; align-items: center; gap: 8px; }
+  .card h2 .tag { font-size: 11px; font-weight: 500; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px; }
+  .row { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; }
+  label { display: flex; flex-direction: column; font-size: 12px; color: var(--muted); gap: 3px; }
+  input, select { font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; min-width: 90px; background: #fff; color: var(--ink); }
+  input[type=number] { width: 110px; }
+  button { font: inherit; padding: 7px 12px; border-radius: 6px; border: 1px solid var(--accent); background: var(--accent); color: var(--accent-ink); cursor: pointer; }
+  button.secondary { background: #fff; color: var(--accent); }
+  button.small { padding: 3px 8px; font-size: 12px; }
+  button:disabled { opacity: .5; cursor: default; }
+  .result { margin-top: 10px; padding: 8px 10px; border-radius: 6px; background: #f6f8fa; border-left: 4px solid var(--line); white-space: pre-wrap; }
+  .result.ok { border-left-color: var(--ok); } .result.err { border-left-color: var(--err); } .result.warn { border-left-color: var(--warn); background: #fff8e6; }
+  .result .meta { color: var(--muted); font-size: 12px; margin-top: 4px; font-family: var(--mono); }
+  table { border-collapse: collapse; width: 100%; margin-top: 8px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); font-size: 13px; }
+  th { color: var(--muted); font-weight: 500; }
+  .feed { max-height: 260px; overflow: auto; }
+  .feed .item { padding: 8px 10px; border-left: 4px solid var(--ok); background: #f0fff4; border-radius: 6px; margin-bottom: 6px; }
+  .feed .item time, .wire time { color: var(--muted); font-family: var(--mono); font-size: 12px; margin-right: 8px; }
+  .monitors { margin-top: 8px; font-size: 13px; }
+  .monitors .m { display: inline-block; background: #eef4ff; border: 1px solid #c9dbff; border-radius: 999px; padding: 2px 10px; margin: 2px 6px 2px 0; }
+  .wire { max-height: 560px; overflow: auto; font-size: 13px; }
+  .wire .e { border-bottom: 1px solid var(--line); padding: 6px 2px; }
+  .wire .head { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+  .wire .arrow { font-family: var(--mono); font-weight: 700; width: 18px; display: inline-block; }
+  .wire .send .arrow { color: var(--send); } .wire .recv .arrow { color: var(--recv); } .wire .drop .arrow { color: var(--drop); }
+  .wire .type { font-family: var(--mono); font-weight: 600; }
+  .wire .note { color: var(--muted); }
+  .wire .note.hot { color: var(--warn); font-weight: 600; }
+  .wire .note.bad { color: var(--err); font-weight: 600; }
+  .wire .hex { font-family: var(--mono); font-size: 12px; color: #30363d; margin-top: 3px; word-break: break-all; line-height: 1.6; }
+  .wire .hex b { color: #fff; background: #57606a; border-radius: 3px; padding: 0 3px; font-weight: 500; }
+  .wire .log { color: var(--muted); font-style: italic; }
+  .wire .log.WARN { color: var(--warn); font-style: normal; } .wire .log.ERROR { color: var(--err); font-style: normal; }
+  .toolbar { display: flex; gap: 10px; align-items: center; margin-left: auto; font-size: 12px; color: var(--muted); }
+  .hint { color: var(--muted); font-size: 12px; margin-top: 6px; }
+  .legend { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .legend b { font-family: var(--mono); color: #fff; background: #57606a; border-radius: 3px; padding: 0 3px; font-weight: 500; }
+</style>
+</head>
+<body>
+<header>
+  <h1>✈ Flight Booking</h1>
+  <span class="badge" id="badge-client">client: connecting…</span>
+  <span class="badge" id="badge-server">server: –</span>
+  <span class="badge" id="badge-sem">semantics: –</span>
+  <span class="spacer"></span>
+  <span><span class="dot" id="dot"></span><span id="conn">connecting</span></span>
+</header>
+
+<main>
+  <section class="col">
+
+    <div class="card">
+      <h2>Settings <span class="tag">this tab’s UDP client</span></h2>
+      <form id="f-settings" class="row">
+        <label>Invocation semantics
+          <select name="semantics">
+            <option value="at-most-once">at-most-once (retransmit, server filters duplicates)</option>
+            <option value="at-least-once">at-least-once (retransmit, server re-executes)</option>
+            <option value="maybe">maybe (send once, no retransmission)</option>
+          </select>
+        </label>
+        <label>Timeout (ms)<input type="number" name="timeout_ms" min="100" max="10000" step="any"></label>
+        <label>Retries<input type="number" name="retries" min="0" max="20"></label>
+        <label>Request loss rate<input type="number" name="loss_rate" min="0" max="1" step="any"></label>
+        <button type="submit">Apply</button>
+      </form>
+      <div class="hint">Start the server with the same <code>--semantics</code>. Timeout × (retries + 1) must stay ≤ 30 s because the server keeps reply history for 60 s.</div>
+      <div class="result" id="r-settings" hidden></div>
+    </div>
+
+    <div class="card">
+      <h2>Search flights <span class="tag">service 1 · idempotent</span></h2>
+      <form id="f-query" class="row">
+        <label>From<input name="source" placeholder="Beijing" required></label>
+        <label>To<input name="destination" placeholder="Shanghai" required></label>
+        <button type="submit">Search</button>
+      </form>
+      <div class="result" id="r-query" hidden></div>
+      <div id="query-results"></div>
+    </div>
+
+    <div class="card">
+      <h2>Flight details <span class="tag">service 2 · idempotent</span></h2>
+      <form id="f-info" class="row">
+        <label>Flight ID<input type="number" name="flight_id" placeholder="1001" required></label>
+        <button type="submit">Show</button>
+      </form>
+      <div class="result" id="r-info" hidden></div>
+    </div>
+
+    <div class="card">
+      <h2>Book seats <span class="tag">service 3 · NON-idempotent</span></h2>
+      <form id="f-reserve" class="row">
+        <label>Flight ID<input type="number" name="flight_id" placeholder="1001" required></label>
+        <label>Seats<input type="number" name="seat_count" value="1" required></label>
+        <button type="submit">Reserve</button>
+      </form>
+      <div class="result" id="r-reserve" hidden></div>
+    </div>
+
+    <div class="card">
+      <h2>Cancel reservation <span class="tag">service 6 · NON-idempotent</span></h2>
+      <form id="f-cancel" class="row">
+        <label>Flight ID<input type="number" name="flight_id" placeholder="1001" required></label>
+        <label>Seats to return<input type="number" name="seat_count" value="1" required></label>
+        <button type="submit">Cancel seats</button>
+      </form>
+      <div class="result" id="r-cancel" hidden></div>
+    </div>
+
+    <div class="card">
+      <h2>Seat availability <span class="tag">service 5 · idempotent</span></h2>
+      <form id="f-seats" class="row">
+        <label>Flight ID<input type="number" name="flight_id" placeholder="1001" required></label>
+        <button type="submit">Check</button>
+      </form>
+      <div class="result" id="r-seats" hidden></div>
+    </div>
+
+    <div class="card">
+      <h2>Watch seat availability <span class="tag">service 4 · callback</span></h2>
+      <form id="f-monitor" class="row">
+        <label>Flight ID<input type="number" name="flight_id" placeholder="1001" required></label>
+        <label>Monitor interval (s)<input type="number" name="interval_seconds" value="60" min="1" max="3600" required></label>
+        <button type="submit">Start watching</button>
+      </form>
+      <div class="result" id="r-monitor" hidden></div>
+      <div class="monitors" id="monitors"></div>
+      <div class="hint">The server sends a callback to this client every time any client changes the seats of a watched flight, until the interval expires. This page keeps working while watching.</div>
+    </div>
+
+  </section>
+
+  <section class="col">
+
+    <div class="card">
+      <h2>Live seat updates <span class="tag">callbacks received</span>
+        <span class="toolbar"><button class="small secondary" type="button" id="clear-feed">Clear</button></span></h2>
+      <div class="feed" id="feed"><div class="hint placeholder">No callbacks yet. Watch a flight, then book seats on it from another client.</div></div>
+    </div>
+
+    <div class="card">
+      <h2>Wire log <span class="tag">UDP datagrams of this client</span>
+        <span class="toolbar">
+          <label style="flex-direction: row; align-items: center; gap: 4px"><input type="checkbox" id="show-hex" checked> bytes</label>
+          <label style="flex-direction: row; align-items: center; gap: 4px"><input type="checkbox" id="autoscroll" checked> auto-scroll</label>
+          <button class="small secondary" type="button" id="clear-wire">Clear</button>
+        </span></h2>
+      <div class="legend">Header = <b>type</b> <b>request id</b> <b>length</b> (3 × uint32, big-endian), then the body. Strings are uint32 length + UTF-8 bytes.</div>
+      <div class="wire" id="wire"></div>
+    </div>
+
+  </section>
+</main>
+
+<script>
+(function () {
+  "use strict";
+
+  const $ = (id) => document.getElementById(id);
+  const TOKEN_KEY = "flight-bridge-token";   // sessionStorage: one token per tab
+  let token = null;
+  let state = null;
+  let es = null;
+  let monitorTimer = null;
+  let reconnectTimer = null;
+  let channel = null;                        // answers "is this token in use?" from other tabs
+
+  // Safari before 16 has no form.requestSubmit(); clicking the submit button
+  // also runs the browser's constraint validation.
+  function submitForm(f) {
+    if (f.requestSubmit) f.requestSubmit();
+    else f.querySelector("button[type=submit]").click();
+  }
+
+  // sessionStorage is copied when a tab is duplicated, so two tabs could share
+  // one UDP client. Ask other tabs whether they already own this token.
+  function tokenInUseElsewhere(t) {
+    return new Promise((resolve) => {
+      if (!t || typeof BroadcastChannel === "undefined") return resolve(false);
+      const bc = new BroadcastChannel("flight-bridge-" + t);
+      const timer = setTimeout(() => { bc.close(); resolve(false); }, 250);
+      bc.onmessage = (ev) => { if (ev.data === "pong") { clearTimeout(timer); bc.close(); resolve(true); } };
+      bc.postMessage("ping");
+    });
+  }
+
+  function ownToken(t) {
+    if (typeof BroadcastChannel === "undefined") return;
+    if (channel) channel.close();
+    channel = new BroadcastChannel("flight-bridge-" + t);
+    channel.onmessage = (ev) => { if (ev.data === "ping") channel.postMessage("pong"); };
+  }
+
+  // ---------------------------------------------------------------- helpers
+  function esc(s) {
+    return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  }
+
+  async function api(path, body) {
+    const payload = Object.assign(token ? { token } : {}, body || {});
+    const resp = await fetch(path, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await resp.json().catch(() => ({ error: "Invalid response from bridge" }));
+    if (!resp.ok) throw new Error(data.error || ("HTTP " + resp.status));
+    return data;
+  }
+
+  function showResult(el, cls, html, meta) {
+    el.hidden = false;
+    el.className = "result " + cls;
+    el.innerHTML = html + (meta ? '<div class="meta">' + esc(meta) + "</div>" : "");
+  }
+
+  function metaOf(r) {
+    return "request #" + r.request_id + " · " + r.attempts + " attempt" + (r.attempts > 1 ? "s" : "") +
+      " · " + r.elapsed_ms + " ms · " + r.semantics;
+  }
+
+  function formOf(id) {
+    const data = {};
+    new FormData($(id)).forEach((v, k) => { data[k] = v; });
+    return data;
+  }
+
+  // Run a service call, render the outcome into a result box.
+  async function call(op, args, el, render) {
+    if (el.dataset.busy) return;              // one call per card at a time
+    const buttons = el.parentElement.querySelectorAll("button[type=submit]");
+    buttons.forEach((b) => (b.disabled = true));
+    el.dataset.busy = "1";
+    showResult(el, "", "Sending…");
+    try {
+      const r = await api("/api/call", { op, args });
+      if (r.status === 0) {
+        showResult(el, "ok", render(r), metaOf(r));
+      } else if (r.status === 100 && !r.idempotent) {
+        showResult(el, "warn", "<b>No reply — the outcome is unknown.</b> The request may have been executed by the server " +
+          "even though no reply arrived. Check the seat availability before trying again.", metaOf(r));
+      } else {
+        showResult(el, "err", "Error: " + esc(r.message), metaOf(r));
+      }
+      return r;
+    } catch (e) {
+      showResult(el, "err", "Bridge error: " + esc(e.message));
+      if (/Unknown session/.test(e.message)) scheduleReconnect(500);   // bridge was restarted
+    } finally {
+      delete el.dataset.busy;
+      buttons.forEach((b) => (b.disabled = false));
+    }
+  }
+
+  // ------------------------------------------------------------- session
+  async function connect() {
+    try { token = sessionStorage.getItem(TOKEN_KEY); } catch (e) { token = null; }
+    if (await tokenInUseElsewhere(token)) token = null;   // duplicated tab: get our own client
+    const info = await api("/api/session", {});
+    token = info.token;
+    try { sessionStorage.setItem(TOKEN_KEY, token); } catch (e) { /* private mode */ }
+    ownToken(token);
+    applyState(info);
+    openEvents();
+  }
+
+  function scheduleReconnect(delay) {
+    if (reconnectTimer) return;
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      connect().catch(() => { setConn(false, "cannot reach bridge – retrying"); scheduleReconnect(3000); });
+    }, delay);
+  }
+
+  function applyState(info) {
+    state = info;
+    $("badge-client").textContent = "client: this tab = UDP port " + info.local_port;
+    $("badge-server").textContent = "server: " + info.server;
+    $("badge-sem").textContent = "semantics: " + info.settings.semantics;
+    const f = $("f-settings");
+    f.semantics.value = info.settings.semantics;
+    f.timeout_ms.value = info.settings.timeout_ms;
+    f.retries.value = info.settings.retries;
+    f.loss_rate.value = info.settings.loss_rate;
+    renderMonitors(info.monitors || []);
+  }
+
+  function setConn(on, text) {
+    $("dot").className = "dot " + (on ? "on" : "off");
+    $("conn").textContent = text;
+  }
+
+  function openEvents() {
+    if (es) es.close();
+    es = new EventSource("/api/events?token=" + encodeURIComponent(token));
+    es.addEventListener("hello", (ev) => {
+      const info = JSON.parse(ev.data);
+      $("wire").innerHTML = "";          // the bridge replays the recent log after hello
+      $("feed").innerHTML = "";
+      applyState(info);
+      setConn(true, "connected to bridge");
+    });
+    es.addEventListener("wire", (ev) => addWire(JSON.parse(ev.data)));
+    es.addEventListener("log", (ev) => addLog(JSON.parse(ev.data)));
+    es.addEventListener("callback", (ev) => addCallback(JSON.parse(ev.data)));
+    es.onerror = () => {
+      if (es.readyState === EventSource.CLOSED) {
+        // A non-200 answer (e.g. 404 after the bridge was restarted and forgot
+        // our token) ends the stream for good: start over with a new session.
+        setConn(false, "bridge restarted – reconnecting");
+        scheduleReconnect(2000);
+      } else {
+        setConn(false, "bridge connection lost – reconnecting");
+      }
+    };
+  }
+
+  // ------------------------------------------------------------- wire log
+  function addWire(e) {
+    const wire = $("wire");
+    const div = document.createElement("div");
+    div.className = "e " + e.direction;
+    const arrow = { send: "→", recv: "←", drop: "✕" }[e.direction] || "·";
+    let note = e.note || "";
+    let noteCls = "note";
+    if (/retransmission/.test(note) || /simulated/.test(note)) noteCls += " hot";
+    if (/discarded/.test(note)) noteCls += " bad";
+    const attempt = e.attempt ? " · attempt " + e.attempt + (e.attempts ? "/" + e.attempts : "") : "";
+    let hex = "";
+    if (e.hex) {
+      const bytes = e.hex.split(" ");
+      const head = bytes.slice(0, 12), body = bytes.slice(12);
+      hex = '<div class="hex"><b>' + head.slice(0, 4).join(" ") + "</b> <b>" + head.slice(4, 8).join(" ") +
+        "</b> <b>" + head.slice(8, 12).join(" ") + "</b> " + esc(body.join(" ")) + "</div>";
+    }
+    div.innerHTML = '<div class="head"><time>' + esc(e.time) + '</time><span class="arrow">' + arrow + "</span>" +
+      '<span class="type">' + esc(e.type_name) + " #" + e.request_id + "</span>" +
+      "<span>" + e.length + " B" + attempt + "</span>" +
+      "<span>" + esc(e.summary || "") + "</span>" +
+      '<span class="' + noteCls + '">' + esc(note) + "</span></div>" + hex;
+    appendWire(div);
+  }
+
+  function addLog(e) {
+    const div = document.createElement("div");
+    div.className = "e log " + e.level;
+    div.innerHTML = "<time>" + esc(e.time) + "</time>" + esc(e.text);
+    appendWire(div);
+  }
+
+  function appendWire(div) {
+    const wire = $("wire");
+    wire.appendChild(div);
+    while (wire.children.length > 400) wire.removeChild(wire.firstChild);
+    if ($("autoscroll").checked) wire.scrollTop = wire.scrollHeight;
+  }
+
+  $("show-hex").addEventListener("change", () => {
+    $("wire").classList.toggle("nohex", !$("show-hex").checked);
+  });
+  const style = document.createElement("style");
+  style.textContent = ".wire.nohex .hex { display: none; }";
+  document.head.appendChild(style);
+  $("clear-wire").addEventListener("click", () => ($("wire").innerHTML = ""));
+
+  // ------------------------------------------------------------- callbacks
+  function addCallback(c) {
+    const feed = $("feed");
+    const placeholder = feed.querySelector(".placeholder");
+    if (placeholder) placeholder.remove();
+    const div = document.createElement("div");
+    div.className = "item";
+    div.innerHTML = "<time>" + esc(c.time) + "</time>Flight <b>" + c.flight_id + "</b> now has <b>" +
+      c.seat_availability + "</b> seats available <span class='hint'>(watch expires in " + c.remaining_seconds + " s)</span>";
+    feed.prepend(div);
+    while (feed.children.length > 100) feed.removeChild(feed.lastChild);
+    if (c.replay) return;                   // history replayed by the bridge: expiry info is stale
+    // keep the local expiry in step with the server's view (the server also
+    // tells us about monitors whose registration reply we never saw)
+    const list = state.monitors || [];
+    let m = list.find((x) => x.flight_id === c.flight_id);
+    if (!m) { m = { flight_id: c.flight_id }; list.push(m); }
+    m.remaining_seconds = c.remaining_seconds;
+    m.expires = Date.now() + c.remaining_seconds * 1000;
+    renderMonitors(list);
+  }
+  $("clear-feed").addEventListener("click", () => ($("feed").innerHTML = '<div class="hint placeholder">Cleared.</div>'));
+
+  function renderMonitors(list) {
+    list.forEach((m) => { if (!m.expires) m.expires = Date.now() + m.remaining_seconds * 1000; });
+    state.monitors = list.filter((m) => m.expires > Date.now());
+    const el = $("monitors");
+    if (!state.monitors.length) { el.innerHTML = ""; clearInterval(monitorTimer); monitorTimer = null; return; }
+    el.innerHTML = "Watching: " + state.monitors.map((m) =>
+      '<span class="m">flight ' + m.flight_id + " · " + Math.max(0, Math.round((m.expires - Date.now()) / 1000)) + " s left</span>").join("");
+    if (!monitorTimer) monitorTimer = setInterval(() => renderMonitors(state.monitors), 1000);
+  }
+
+  // ------------------------------------------------------------- forms
+  $("f-settings").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const el = $("r-settings");
+    try {
+      const info = await api("/api/settings", formOf("f-settings"));
+      applyState(info);
+      showResult(el, "ok", "Applied: " + esc(info.settings.semantics) + ", timeout " + info.settings.timeout_ms +
+        " ms, " + info.settings.retries + " retries, request loss rate " + info.settings.loss_rate);
+    } catch (e) {
+      showResult(el, "err", esc(e.message));
+    }
+  });
+
+  $("f-query").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const args = formOf("f-query");
+    $("query-results").innerHTML = "";
+    const r = await call("query_flights", args, $("r-query"), (r) =>
+      "Found " + r.flight_ids.length + " flight" + (r.flight_ids.length === 1 ? "" : "s") + " from " +
+      esc(args.source) + " to " + esc(args.destination));
+    if (r && r.status === 0) {
+      $("query-results").innerHTML = "<table><tr><th>Flight</th><th>Route</th><th></th></tr>" + r.flight_ids.map((id) =>
+        "<tr><td><b>" + id + "</b></td><td>" + esc(args.source) + " → " + esc(args.destination) + "</td><td>" +
+        '<button class="small secondary" data-act="info" data-id="' + id + '">Details</button> ' +
+        '<button class="small" data-act="book" data-id="' + id + '">Book</button> ' +
+        '<button class="small secondary" data-act="watch" data-id="' + id + '">Watch</button></td></tr>').join("") + "</table>";
+    }
+  });
+
+  $("query-results").addEventListener("click", (ev) => {
+    const b = ev.target.closest("button[data-act]");
+    if (!b) return;
+    const id = b.dataset.id;
+    if (b.dataset.act === "info") { $("f-info").flight_id.value = id; submitForm($("f-info")); }
+    if (b.dataset.act === "book") { $("f-reserve").flight_id.value = id; $("f-reserve").seat_count.focus(); }
+    if (b.dataset.act === "watch") { $("f-monitor").flight_id.value = id; submitForm($("f-monitor")); }
+  });
+
+  $("f-info").addEventListener("submit", (ev) => {
+    ev.preventDefault();
+    call("get_flight_info", formOf("f-info"), $("r-info"), (r) => {
+      const f = r.flight;
+      return "<table><tr><th>Flight</th><td>" + f.flight_id + "</td></tr>" +
+        "<tr><th>Route</th><td>" + esc(f.source) + " → " + esc(f.destination) + "</td></tr>" +
+        "<tr><th>Departure</th><td>" + esc(f.departure_time) + "</td></tr>" +
+        "<tr><th>Airfare</th><td>" + f.airfare.toFixed(2) + "</td></tr>" +
+        "<tr><th>Seats available</th><td><b>" + f.seat_availability + "</b></td></tr></table>";
+    });
+  });
+
+  $("f-reserve").addEventListener("submit", (ev) => {
+    ev.preventDefault();
+    const a = formOf("f-reserve");
+    call("reserve_seats", a, $("r-reserve"), (r) =>
+      "Reserved <b>" + esc(a.seat_count) + "</b> seat(s) on flight " + esc(a.flight_id) + ". Remaining seats: <b>" + r.remaining_seats + "</b>");
+  });
+
+  $("f-cancel").addEventListener("submit", (ev) => {
+    ev.preventDefault();
+    const a = formOf("f-cancel");
+    call("cancel_reservation", a, $("r-cancel"), (r) =>
+      "Returned <b>" + esc(a.seat_count) + "</b> seat(s) on flight " + esc(a.flight_id) + ". Seats available now: <b>" + r.seat_availability + "</b>");
+  });
+
+  $("f-seats").addEventListener("submit", (ev) => {
+    ev.preventDefault();
+    const a = formOf("f-seats");
+    call("get_seat_count", a, $("r-seats"), (r) => "Flight " + esc(a.flight_id) + " has <b>" + r.seat_count + "</b> seats available");
+  });
+
+  $("f-monitor").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const a = formOf("f-monitor");
+    const r = await call("register_monitor", a, $("r-monitor"), (r) =>
+      "Watching flight " + esc(a.flight_id) + " for " + r.interval_seconds + " s. Updates appear under “Live seat updates”.");
+    if (r && r.status === 0) {
+      const list = (state.monitors || []).filter((m) => m.flight_id !== Number(a.flight_id));
+      list.push({ flight_id: Number(a.flight_id), remaining_seconds: r.interval_seconds, expires: Date.now() + r.interval_seconds * 1000 });
+      renderMonitors(list);
+    }
+  });
+
+  connect().catch((e) => {
+    setConn(false, "cannot reach bridge – retrying");
+    showResult($("r-settings"), "err", "Cannot reach the bridge: " + esc(e.message) + ". Is bridge.py running?");
+    scheduleReconnect(3000);
+  });
+})();
+</script>
+</body>
+</html>

@@ -270,8 +270,17 @@ revised_v2/
 └── CMakeLists.txt
 ```
 
+## 网页客户端（可选扩展）
+
+`web/` 里有一个 **Python 写的第二个客户端**（对应作业的可选加分项：客户端和服务器用不同语言）：`bridge.py` 用标准库自己做编组、超时重传和三种调用语义，作为 UDP 客户端连接本 C++ 服务器，并给本机浏览器提供一个订票网站风格的页面（每个标签页就是一个独立的 UDP 客户端，页面上能看到每个数据报的字节和重传过程）。用法、演示步骤和自测见 [web/README.md](web/README.md)：
+
+```bash
+cd web && python3 bridge.py --server=<服务器IP> --port=8080 --open
+```
+
 ## 技术文档
 
 - [修改说明（本修订版）](CHANGES.md)
+- [网页客户端说明](web/README.md)
 - 原版文档（仓库根目录，未改动，其中调用语义的描述已过时，以本文件夹为准）：
   [需求规格说明书](../docs/SPEC_Requirements.md)、[系统架构设计](../docs/SPEC_Architecture.md)、[开发日志](../docs/DEV_Log.md)
