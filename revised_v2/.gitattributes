@@ -1,3 +1,5 @@
 # Shell scripts must keep LF line endings, also when checked out on Windows
 # (bash fails on CRLF). Everything else follows the user's Git settings.
 *.sh text eol=lf
+*.command text eol=lf
+*.bat text eol=crlf

@@ -36,3 +36,6 @@ experiment_logs/
 # Python bytecode
 __pycache__/
 *.pyc
+
+# Server IP remembered by demo.bat / demo.command
+server_ip.txt
