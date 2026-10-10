@@ -94,7 +94,8 @@ no request and keeps the tab's UDP client, search, selection and watches.
   resubmit"; the page never retries it on its own.
 - **Lab console** (top bar, stays open until closed) – this tab's UDP port and
   server, the invocation settings (semantics, timeout, retries, request loss),
-  the six **raw service forms** that each send exactly one request, and the
+  the six **raw service forms** (each submit is one logical call; on a timeout
+  the bridge may resend it as further datagrams with the same request id), and the
   **wire log** with every datagram as hex (12-byte header highlighted),
   retransmissions and simulated losses. Protocol names stay in English to
   match the source code.
@@ -108,10 +109,14 @@ no request and keeps the tab's UDP client, search, selection and watches.
    **Select** flight 1001, set 2 passengers, **Confirm booking**.
    Laptop A's *Seat alerts* shows "Server update: 118 seats" and a notification.
    The server log shows two different client ports, both starting at request #1.
-4. Semantics experiment – use the **raw forms in the Lab console** so that every
-   click sends exactly one request (a search also sends one detail request per
-   flight, which changes the sequence of simulated losses). Set the server's
-   `--semantics` explicitly in both rounds:
+4. Semantics experiment – the console client (`../client`) is the reference
+   tool for this. On the page, use the **raw forms in the Lab console**: every
+   submit is one logical call (plus retransmissions with the same request id),
+   whereas a search also makes one detail call per flight found, which shifts
+   the sequence of simulated losses. Repeatable numbers additionally need a
+   freshly started server (same seed), the same timeout and retries, and no
+   other client sending in between. Set the server's `--semantics` explicitly
+   in both rounds:
    - restart the server with `--semantics=at-least-once --loss-rate=0.5 --seed=6103`,
      set the tab's semantics to at-least-once, send *3 · Reserve seats* (1001, 1)
      ten times, then *5 · Seat count*: more than 10 seats are gone and the wire
