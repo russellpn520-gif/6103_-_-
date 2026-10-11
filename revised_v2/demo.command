@@ -24,7 +24,7 @@ need_binary() {
 run() {
     echo
     echo "> $*"
-    echo "  Stop with Ctrl+C."
+    echo "  Stop with Ctrl+C, then press Enter to come back to the menu."
     echo
     "$@"
     echo
@@ -33,8 +33,9 @@ run() {
 
 trap 'echo' INT   # Ctrl+C stops the program, not this menu
 
+clear   # only once, so earlier server output stays readable above the menu
 while true; do
-    clear
+    echo
     cat <<'EOF'
 ================= SC6103 demo launcher =================
   Server  (computer 1)
@@ -54,10 +55,10 @@ while true; do
 EOF
     read -r -p "Choose: " CHOICE || exit 0   # input closed
     case "$CHOICE" in
-        1) need_binary server && run ./server --port=8080 --semantics=at-most-once --loss-rate=0 ;;
-        2) need_binary server && run ./server --port=8080 --semantics=at-least-once --loss-rate=0.5 --seed=6103 ;;
-        3) need_binary server && run ./server --port=8080 --semantics=at-most-once --loss-rate=0.5 --seed=6103 ;;
-        4) need_binary server && run ./server --port=8080 --semantics=at-least-once --loss-rate=0 ;;
+        1) need_binary server && run ./server --port=8080 --semantics=at-most-once --loss-rate=0 --log-file=demo_server.log ;;
+        2) need_binary server && run ./server --port=8080 --semantics=at-least-once --loss-rate=0.5 --seed=6103 --log-file=demo_server.log ;;
+        3) need_binary server && run ./server --port=8080 --semantics=at-most-once --loss-rate=0.5 --seed=6103 --log-file=demo_server.log ;;
+        4) need_binary server && run ./server --port=8080 --semantics=at-least-once --loss-rate=0 --log-file=demo_server.log ;;
         5) ask_ip
            PY=$(command -v python3 || command -v python)
            if [ -z "$PY" ]; then echo "Python 3 not found"; read -r -p "Press Enter " _; continue; fi

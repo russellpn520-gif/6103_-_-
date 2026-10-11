@@ -5,8 +5,10 @@ setlocal
 cd /d "%~dp0"
 title SC6103 demo launcher
 
-:menu
+rem clear the window only once, so earlier server output stays readable above the menu
 cls
+:menu
+echo.
 echo ================= SC6103 demo launcher =================
 echo   Server  (computer 1)
 echo     1  Server - main flow          at-most-once, no loss
@@ -44,10 +46,11 @@ if not exist server.exe (
   goto menu
 )
 echo.
-echo ^> server.exe --port=8080 %ARGS%
-echo   Stop with Ctrl+C, then answer N to come back to this menu.
+echo ^> server.exe --port=8080 %ARGS% --log-file=demo_server.log
+echo   The log is also appended to demo_server.log in this folder.
+echo   Stop with Ctrl+C, answer N, then press any key to come back to this menu.
 echo.
-.\server.exe --port=8080 %ARGS%
+.\server.exe --port=8080 %ARGS% --log-file=demo_server.log
 echo.
 pause
 goto menu
@@ -80,7 +83,7 @@ if not defined PY (
 echo.
 echo ^> %PY% web\bridge.py --server=%IP% --port=8080 --open
 echo   The browser opens http://localhost:8000/ . Keep this window open.
-echo   Stop with Ctrl+C, then answer N to come back to this menu.
+echo   Stop with Ctrl+C, answer N, then press any key to come back to this menu.
 echo.
 %PY% web\bridge.py --server=%IP% --port=8080 --open
 echo.
