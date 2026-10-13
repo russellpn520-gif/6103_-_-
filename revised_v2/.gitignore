@@ -1,7 +1,6 @@
-# Build output (binaries in the project root only; tests/ holds test sources)
+# Build output (binaries in the project root only)
 /server
 /client
-/tests_run
 *.exe
 *.o
 *.d

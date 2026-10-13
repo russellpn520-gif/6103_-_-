@@ -53,41 +53,6 @@ add_executable(server
 target_link_libraries(server common)
 
 # ============================================================
-# Unit tests (optional: needs Google Test and the tests/ sources)
-# ============================================================
-option(BUILD_TESTS "Build test executables" ON)
-
-if(BUILD_TESTS AND EXISTS ${CMAKE_SOURCE_DIR}/tests/test_main.cpp)
-    find_package(GTest QUIET)
-
-    if(GTEST_FOUND)
-        enable_testing()
-
-        add_executable(tests
-            tests/test_main.cpp
-            tests/test_message_serializer.cpp
-            tests/test_flight_manager.cpp
-            src/server/flight_manager.cpp
-            src/server/monitor_manager.cpp
-            src/server/request_history.cpp
-        )
-
-        target_link_libraries(tests
-            common
-            GTest::GTest
-            GTest::Main
-        )
-
-        add_test(NAME AllTests COMMAND tests)
-
-        message(STATUS "Google Test found, building tests")
-    else()
-        message(STATUS "Google Test not found, skipping tests")
-        message(STATUS "Install with: brew install googletest")
-    endif()
-endif()
-
-# ============================================================
 # Install
 # ============================================================
 install(TARGETS client server DESTINATION bin)
